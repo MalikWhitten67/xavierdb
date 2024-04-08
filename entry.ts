@@ -18,7 +18,7 @@ if(!fs.existsSync(process.cwd() + '/routes')){
     console.error("routes directory is required")
     process.exit(1) 
 }  
-
+//@ts-ignore
 globalThis.crud = crud
 const config = await import(process.cwd() + '/config.ts').then((mod) => mod.default) as any
 // generate types from config
@@ -53,6 +53,26 @@ var types = config.collections.map((collection) => {
     }).join(", ")
     return `export type ${collection.$.name} = {${fields}}`
 })
+
+let memoryLimit = process.env.MEMORY_LIMIT || 1000000
+let cpuLimit = process.env.CPU_LIMIT || 100
+globalThis.compression_level = process.env.COMPRESSION_LEVEL || 1 // 1-9
+function watchMemory(){
+    let used = process.memoryUsage().heapUsed / 1024 / 1024;
+    let cpu = process.cpuUsage().user / 1000
+    //@ts-ignore
+    if(used > memoryLimit){
+        console.error(`Memory limit exceeded ${used}MB`)
+        process.exit(1)
+    }
+    //@ts-ignore
+    if(cpu > cpuLimit){
+        console.error(`CPU limit exceeded ${cpu}`)
+        process.exit(1)
+    } 
+}
+
+setInterval(watchMemory, 1000)
 
 types = types.join("\n") as any;
 types += `
@@ -93,42 +113,58 @@ declare global {
                 created_at: Date,
                 updated_at: Date,
                 [key: string]: any
-            }]
+            }],
+            authWithPassword: (email: string, password: string) => {
+                id: any,
+                created_at: Date,
+                updated_at: Date, 
+                error: null | string,
+                [key: string]: any
+            },
             delete: (id: string) => any
         };
+        /**
+         * @description Log unreachable errors to data/logs.txt
+         * @param message 
+         * @returns 
+         */
+        error: (message: string) => any
         sync(): void
         collections: any[] 
+    }
+    var RequestData: Request  & { 
+        params: {
+            [key: string]: any
+        }
     }
 }
 `
 
 fs.mkdirSync(process.cwd() + '/types', {recursive:true})
 fs.writeFileSync(process.cwd() + '/types/types.ts', types)
+//@ts-ignore
 globalThis.crud = crud
 export const bc = new BroadcastChannel("crud")
 import { responseCodes } from "./enums/http_response_codes"
 
-const routes = new Bun.FileSystemRouter({
+const routes = new globalThis.Bun.FileSystemRouter({
     style:'nextjs',
     dir: process.cwd() + '/routes'
 })
-const wsClients = new Set()
-bc.onmessage = (e) => {  
-    wsClients.forEach((ws) => {
-        ws.send(JSON.stringify(e.data))
-    })
-}
+globalThis.wssClients =  []
+ 
 export default{
     port: process.env.HTTP_REQUEST_PORT || 3000, 
     websocket: {
         async open(ws){ 
-            ws.send("connected")
+            ws.send(JSON.stringify({message:"connected"}))
+            globalThis.wssClients.push(ws)
         },
         async message(ws){
-            wsClients.delete(ws)
+           console.log("message")
         },
         async close(ws){
-            wsClients.delete(ws)
+           globalThis.wssClients = globalThis.wssClients.filter((client) => client !== ws)
         }
     },
     async fetch(req, res){ 
@@ -140,6 +176,31 @@ export default{
          let path = url.pathname
          let route = routes.match(path)
           
+         if(url.pathname.includes("/collection/")){
+            let name = url.pathname.split("/")[2]
+            let method = url.pathname.split("/")[3]
+            let data = await req.json()
+            let collection = config.collections.find((collection) => collection.$.name === name)
+            if(!collection){ return new Response("404 Not Found", {status:responseCodes.notfound}) }
+            if(!collection[method]){ return new Response("404 Not Found", {status:responseCodes.notfound}) }
+            if(method === "getOne"){
+                let options = data.options || {}
+                data = data.id
+                return new Response(JSON.stringify(await collection[method](data, options)), {status:200, headers:{"Content-Type":"application/json"}})
+            }
+            if(method === "update"){
+                let id = data.id
+                let token = req.headers.get("Authorization")?.split("Bearer ")[1] || "" 
+                data = data.data  
+                return new Response(JSON.stringify(await collection[method](id, data, {token})), {status:200, headers:{"Content-Type":"application/json"}})
+            }
+            if(method === "delete"){
+                let id = data.id
+                return new Response(JSON.stringify(await collection[method](id)), {status:200, headers:{"Content-Type":"application/json"}})
+            }
+            let response = await collection[method](data)
+            return  new Response(JSON.stringify(response), {status:200, headers:{"Content-Type":"application/json"}})
+         }
          try {
             if(route){
                 let mod = await import(route.filePath)
@@ -151,12 +212,9 @@ export default{
                }else{
                   return new Response("404 Not Found", {status:responseCodes.notfound})
             }
-         } catch (error) {
-            console.error(error)
-            if(process.env.LOG_DIR && process.env.LOG_LEVEL === "error"){
-                let logs  = fs.createWriteStream(process.env.LOG_DIR + '/error.log', {flags: 'a'})
-                logs.write(error + "\n")
-                logs.close()
+         } catch (error) { 
+            if(process.env.LOG_LEVEL?.toLocaleLowerCase() === "error"){
+                 throw new Error(error)
             }
             return new Response("500 Internal Server Error", {status:responseCodes.internalservererror})
          }
