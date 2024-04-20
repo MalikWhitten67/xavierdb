@@ -56,10 +56,12 @@ export class Xavier{
                     }
                 })
                 let json = await response.json()
-                if(json.error){
-                    throw new Error(json.error)
+                if(json.error){ 
+                    let error = new Error(json.error)
+                    error.message = json.error
+                    throw error
                 }
-                return await response.json() as {
+                return await json as {
                     id: any,
                     created_at: Date,
                     updated_at: Date, 
@@ -67,7 +69,22 @@ export class Xavier{
                 }
             } ,
             getAll:  async () => {
-                let response = await fetch(this.database_url + "/collection/" + name + "/getAll")
+                let response = await fetch(this.database_url + "/collection/" + name + "/getAll", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(this.authData?.token ? {Authorization: "Bearer " + this.authData.token} : {})
+                    } 
+                })  
+                if(response.status === 401){
+                   let e = {
+                          message: "Unauthorized",
+                          name: "Unauthorized",
+                          code: 401
+                     
+                   }
+                     throw e
+                }
                 return await response.json() as any[]
             } ,
             authWithPassword: async (email: string, password: string) => {
@@ -95,6 +112,7 @@ export class Xavier{
                     body: JSON.stringify({id, options}),
                     headers: {
                         "Content-Type": "application/json",
+                        ...(this.authData?.token ? {Authorization: "Bearer " + this.authData.token} : {})
                         
                     }
                 })
@@ -122,14 +140,45 @@ export class Xavier{
                         "Content-Type": "application/json",
                         ...(this.authData?.token ? {Authorization: "Bearer " + this.authData.token} : {})
                     }
-                })
-                return await response.json() as {
+                }) 
+                let json = await response.json() 
+                if(response.status === 401){ 
+                    let error =  json.error 
+                    let e =  {
+                        message:error,
+                        name: "Unauthorized",
+                        code: 401
+                    }
+                    throw e
+                }
+                return json as {
                     id: any,
                     created_at: Date,
                     updated_at: Date, 
                     [key: string]: any
                 }
             },
+            delete: async (id: string) => {
+                let response = await fetch(this.database_url + "/collection/" + name + "/delete", {
+                    method: "POST",
+                    body: JSON.stringify({id}),
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(this.authData?.token ? {Authorization: "Bearer " + this.authData.token} : {})
+                    }
+                })
+                let json = await response.json()
+                if(response.status === 401){ 
+                    let error =  json.error 
+                    let e =  {
+                        message:error,
+                        name: "Unauthorized",
+                        code: 401
+                    }
+                    throw e
+                }
+                return json
+            }
         }
     }
 }
