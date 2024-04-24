@@ -1,723 +1,732 @@
-import fs from "fs";
-import crud from "./CRUD";
+//@ts-nocheck
+import fs from "fs"; 
+import { responseCodes } from "./enums/http_response_codes";
 import jwt from 'jsonwebtoken';
-import './index.ts';
+import type from  './ext/types.txt';  
+import { file } from 'bun'
+import env_example from './ext/.env.example.txt';
+import crud from './ext/crud.txt'
+import Bun from 'bun'
+import ansiColors from "ansi-colors"; 
+import './transpiler/transpiler'   
+if(!fs.existsSync(process.cwd() + "/node_modules/xavierdb/crud/index.ts")) { 
+  fs.mkdirSync(process.cwd() + "/node_modules/xavierdb/crud", { recursive: true });
+  fs.writeFileSync(process.cwd() + "/node_modules/xavierdb/crud/index.ts", crud);
+  // write package.json
+  fs.writeFileSync(process.cwd() + "/node_modules/xavierdb/package.json", `{
+  "name": "xavierdb",
+  "version": "1.0.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "test": "echo \\"Error: no test specified\\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "jsonwebtoken": "latest"
+  }
+}
+  `);
+}
+if(fs.existsSync(process.cwd() + "/schema.cbf")) {
+   !fs.existsSync(process.cwd() + "/node_modules/xavierdb") && fs.mkdirSync(process.cwd() + "/node_modules/xavierdb");
+   !fs.existsSync(process.cwd() + "/node_modules/xavierdb/client") && fs.mkdirSync(process.cwd() + "/node_modules/xavierdb/client"); 
+   let schema = await import(process.cwd() + "/schema/schema.json").then((mod) => mod.default);
+   schema.collections = schema.collections.map((collection) => {
+      Object.assign(collection, { $: { name: collection.name, fields: collection.fields, required: collection.required, relations: collection.relations } });
+      return collection;
+   });  
+   generateTypes(schema);
+   fs.writeFileSync(process.cwd() + "/node_modules/xavierdb/client/index.ts", `
+   //@ts-nocheck  
+   import crud from "xavierdb/crud"; 
+${
+  schema.collections.map((collection, index) => { 
+    return ` 
+    import ${collection.name} from "xavierdb/types/${collection.name}";
+    var crud${collection.name} = crud.schema({
+      name: "${collection.name}",
+      fields: ${JSON.stringify(collection.fields)},
+      required: ${JSON.stringify(collection.required || [])},
+      relations: ${JSON.stringify(collection.relations.length > 0 ? collection.relations : [])},
+      auth: ${collection.auth || false}
+    })
+    var crud${index} = {
+      schema: function(schema: any) {
+        return {
+          /** 
+           * @method insertOne
+           * @description Insert a single document into the ${collection.name} collection
+           * @param data ${collection.name}
+           * @returns { ${collection.name}}
+           * */
+          insertOne: async function(data:  ${collection.name}) {
+            return crud${collection.name}.insertOne(data) as ${collection.name};
+          },
+          /**
+           * @method update
+           * @description Update a single document in the ${collection.name} collection
+           * @param id any
+           * @param data ${collection.name}
+           * @returns { ${collection.name}}
+           * */
+          update: async function(id: any, data: ${collection.name}) {
+             return  await crud${collection.name}.update(id, data) as ${collection.name};
+          },
+          /**
+           * @method uplaod 
+           * @description Upload a file to the given collection
+           * @param req Request
+           * @param filename string
+           * @param collection string
+           * @returns {id: string, path:string, url:string}
+           * 
+           */
+          upload: async function(req: Request, data:{filename: string, collection: string}) {
+            let formData = await req.formData();
+            if(!formData) return  {error: "No file provided"}
+            if(!formData.has("file")) return {error: "No file provided"} 
+            return await crud${collection.name}.upload(formData.get("file"), data) as any;
+          },
+          /**
+           * @method delete
+           * @description Delete a single document in the ${collection.name} collection
+           * @param id any
+           * @returns {boolean}
+           * */
+          delete: async function(id: any) {
+             return  await crud${collection.name}.delete(id) as boolean;
+          }, 
+          /**
+           * @method findOne
+           * @description Find a single document in the ${collection.name} collection by id
+           * @param id any
+           * @returns { ${collection.name}} 
+           * */
+          findOne: async function(id: any) {
+             return await crud${collection.name}.findOne(id) as ${collection.name};
+          },
+          /**
+           * @method match
+           * @description Find multiple documents in a collection that match the query
+           * @param query  
+           * @param options 
+           * @returns 
+           */
+           match: async function( query: { [key: string]: any; id?: any },
+           options: { limit?: number | undefined, sort?: 'asc' | 'desc' | undefined}) {
+             return await crud${collection.name}.match(query, options) as ${collection.name}[];
+           },
+           /**
+            * @method insertMany
+            * @description Insert multiple documents into the ${collection.name} collection
+            * @param data ${collection.name}s
+            * @returns { ${collection.name}[]}
+            * */
+          insertMany: async function(data: ${collection.name}[]) {
+             return await crud${collection.name}.insertMany(data) as ${collection.name}[];
+          } ,
+          /**
+           * @method deleteMany
+           * @description Delete multiple documents in the ${collection.name} collection
+           * @param query any
+           * @returns {boolean}
+           * */
+          deleteMany: async function(query: any) {
+             return await crud${collection.name}.deleteMany(query) as boolean;
+          },
+          /**
+           * @method updateMany
+           * @description Update multiple documents in the ${collection.name} collection
+           * @param query any
+           * @param data ${collection.name}
+           * @returns [{ ${collection.name}}]
+           * */
+          updateMany: async function(query: any, data:${collection.name}) {
+             return await crud${collection.name}.updateMany(query, data) as ${collection.name};
+          },
+          /**
+           * @method count
+           * @description Count the number of documents in the ${collection.name} collection
+           * @param query any
+           * @returns {number}
+           * */
+          count: async function(query: any) {
+            return await crud${collection.name}.count(query) as number;
+          },
+          /**
+           * @method getAll 
+           * @description Get all documents in the ${collection.name} collection
+           * @returns { ${collection.name}[]}
+           * */
+          getAll: async function() {
+            return await crud${collection.name}.getAll() as ${collection.name}[];
+          },
+          /**
+           * @method authWithPassword 
+           * @description Authenticate a user with a password
+           * @param  EmailOrUsername string
+           * @param password string
+           * @returns {${collection.name}}
+           * */
+          authWithPassword: async function(data:{EmailOrUsername: string, password: string}) {
+            return await crud${collection.name}.authWithPassword(data) as ${collection.name};
+          },
+        }
+      } 
+    }
+      
+    `;
+  }).join(";\n")
+}
+ 
+export const sync =  async function() {
+  return await crud.sync();
+
+}
+
+declare global {
+  var RequestData: Request & {
+    params: {
+      [key: string]: any;
+    };
+    query: {
+      [key: string]: any; 
+    }
+  };
+
+}
+
+
+export default {
+  sync, 
+  jwt: crud.jwt,
+  ${
+    schema.collections.map((collection, index) => {
+      return (
+          `
+${collection.name}: crud${index}.schema({
+name: "${collection.name}",
+fields: ${JSON.stringify(collection.fields)},
+required: ${JSON.stringify(collection.required || [])},
+relations: ${JSON.stringify(collection.relations || [])},
+auth: ${collection.auth || false}
+})  
+           ` )
+       }).join(",\n")
+       
+  }
+   
+}`);
+}  
+let xavier = await import(process.cwd() + "/node_modules/xavierdb/client/index.ts").then((mod) => mod.default);
+xavier.sync()
+ 
+let args = process.argv.slice(2);
 if (!fs.existsSync(process.cwd() + "/data")) {
   fs.mkdirSync(process.cwd() + "/data");
 }
 if (!fs.existsSync(process.cwd() + "/data/db.sqlite")) {
   fs.writeFileSync(process.cwd() + "/data/db.sqlite", "");
 }
-if (!process.env.HTTP_REQUEST_PORT) {
-  console.error("HTTP_REQUEST_PORT environment variable is required");
-  process.exit(1);
+if(!fs.existsSync(process.cwd() + "/node_modules")){
+  fs.mkdirSync(process.cwd() + "/node_modules");
 }
-if (!fs.existsSync(process.cwd() + "/config.ts")) {
-  console.error("config.ts file is required");
-  process.exit(1);
+if (!fs.existsSync(process.cwd() + "/logs")) {
+  fs.mkdirSync(process.cwd() + "/logs");
 }
-if(!fs.existsSync(process.cwd() + "/types")) {
-  fs.mkdirSync(process.cwd() + "/types");
-fs.writeFileSync(process.cwd() + "/types/types.ts", `
-type Schema = {
-  /**
-   * @description The name of the collection
-   */
- name: string,
-   /**
-         * @private;
-         */ 
- required?: any[],
-/**
-          * @description The updateable object is used to determine which fields can be updated by the user.
-          * @param for The field that is used to determine if the user is the owner
-          * @param owner The fields that can be updated by the owner
-          * @param other The fields that can be updated by other users
-          */
-  updateable?: {
-          for: string,
-          owner: () => string[],
-          other: () => string[]
-  },
-  fields: {
-      [key: string]: string
-  },
-  deletable?: {
-          for: string,
-          owner: boolean,
-          other: boolean
-  },
-  viewable?: {
-          for: string,
-          owner: () => string[],
-          other: () => string[]
-  },
-    /**
-         * @description The related object is used to determine which fields are related to other collections
-         * @param key The name of the related collection
-         * @param fields The fields that are related to the collection
-         */
-  related?: {
-      [key: string]: {
-          fields: string[]
-      }
-  },
-     /**
-         * @description The restrict object is used to determine if the user can update or delete the collection
-         */
-  restrict?: boolean,
-  auth?: boolean, 
-}
-declare global {
-var crud: {
-    schema(data: Schema): {
-      /**
-       * @description The admin object allows you to use custom validation and logic for the collection bypassing schema restrictions and authentication
-       */
-      admin: {
-        insertOne: (data: any) => {
-              id: any,
-              created_at: Date,
-              updated_at: Date, 
-              [key: string]: any,
-              error: null | string
-        }
-        getAll: () => [{
-              id: any,
-              created_at: Date,
-              updated_at: Date,
-              [key: string]: any
-        }]
-        viewAll: () =>  [{
-              id: any,
-              created_at: Date,
-              updated_at: Date,
-              [key: string]: any
-        }]
-        update: (id: string, data: any) => {
-              id: any,
-              created_at: Date,
-              updated_at: Date, 
-              [key: string]: any,
-              error: null | string
-        }
-        delete: (id: string) => {
-              id: any,
-              created_at: Date,
-              updated_at: Date, 
-              [key: string]: any,
-              error: null | string
-        }
-    }
-        
-        /**
-         * @description The restrict object is used to determine if the user can update or delete the collection
-         */
-        restrict: boolean,
-        /**
-         * @description The auth object is used to determine if the collection requires authentication
-         */
-        auth: boolean,
-        /**
-         * @description Insert a new document into the collection
-         * @param id The id of the document 
-         * @param data The data to insert into the collection
-         * @returns The new document
-         */
-        insertOne: (data: any) => {
-            id: any,
-            created_at: Date,
-            updated_at: Date, 
-            [key: string]: any
-        }
-        /**
-         * 
-         * @param query  The query to match documents 
-         * @description Match documents in the collection
-         * @returns 
-         */
-        match: (query: {
-            [key: string]: any
-            id?: any
-        }) =>  [{
-            id: any,
-            created_at: Date,
-            updated_at: Date, 
-            [key: string]: any
-        }],
-        /**
-         * @description Update a document in the collection
-         * @param id The id of the document
-         * @param data 
-         * @returns 
-         */
-        update: (id: string, data: any) =>  {
-            id: any,
-            created_at: Date,
-            updated_at: Date, 
-            [key: string]: any
-        }
-        /**
-         * @description Find a document based on the id
-         * @param id The id of the document
-         * @returns 
-         */
-        findOne: (id: string) =>  {
-            id: any,
-            created_at: Date,
-            updated_at: Date,
-            [key: string]: any
-        }, 
-        /**
-         * @description Get all documents in the collection
-         * @returns All documents in the collection
-         */
-        getAll: () => [{
-            id: any,
-            created_at: Date,
-            updated_at: Date,
-            [key: string]: any
-        }],
-        /**
-         * @description Authenticate with a password
-         * @param data  The data to authenticate with
-         * @returns 
-         */
-        authWithPassword: (data:{email: string, password: string}) => {
-            id: any,
-            created_at: Date,
-            updated_at: Date, 
-            error: null | string,
-            token: string,
-            [key: string]: any
-        },
-        /**
-         * @description Delete a document in the collection
-         * @param id The id of the document
-         * @returns 
-         */
-        delete: (id: string) => any
-    };
-    /**
-     * @description Log unreachable errors to data/logs.txt
-     * @param message 
-     * @returns 
-     */
-    error: (message: string) => any
-    /**
-     * @description Sync the collections with the database
-     * @returns void
-     */
-    sync(): void
-    /**
-     * @description Holder for all schemas
-     * @returns []
-     */
-    collections: any[] 
-}
-var RequestData: Request  & { 
-    params: {
-        [key: string]: any
-    }
-}
-}
-`);
-}
-if (!fs.existsSync(process.cwd() + "/routes")) {
-  console.error("routes directory is required");
-  process.exit(1);
-}
- 
-//@ts-ignore
-globalThis.crud = crud;
-const config = (await import(process.cwd() + "/config.ts").then(
-  (mod) => mod.default
-)) as any;
-// generate types from config
-var types = config.collections.map((collection) => {
-  let keys = Object.keys(collection.$.fields);
-  let required = collection.$.required || [];
-  let fields = keys
-    .map((key) => {
-      let type = collection.$.fields[key].toLowerCase();
-      switch (true) {
-        case type === "text":
-          type = "string";
-          break;
-        case type === "integer":
-          type = "number";
-          break;
-        case type === "real":
-          type = "number";
-          break;
-        case type === "date":
-          type = "Date";
-          break;
-        case type === "blob":
-          type = "ArrayBuffer";
-          break;
-        default:
-          type = "any";
-          break;
-      }
-      if (key === "created_at") return `${key}: Date`;
-      if (key === "updated_at") return `${key}: Date`;
-      return `${key}${required.includes(key) ? "" : "?"}: ${type}`;
-    })
-    .join(", ");
-  return `export type ${collection.$.name} = {${fields}}`;
-});
+if (args[0] && args[0].startsWith("--help")) {
+  switch (true) {
+     case args.includes("--help-env"):
+      console.log(`
+Environment Variables
+------
+${env_example}
+   `.trim());
 
-let memoryLimit = process.env.MEMORY_LIMIT || 1000000;
-let cpuLimit = process.env.CPU_LIMIT || 100;
-globalThis.compression_level = process.env.COMPRESSION_LEVEL || 1; // 1-9
-function watchMemory() {
-  let used = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-  let cpu = process.cpuUsage().user / 1000;
-  //@ts-ignore
-  if (used > memoryLimit) {
-    console.error(`Memory limit exceeded ${used}MB`);
+  }
+  console.log(`\n
+--help - Show help
+--help-env - Show environment variables
+--version - Show version
+--init - Initialize the project
+--serve - Start the server
+  `.trim());
+  process.exit(0);
+}
+if (args.includes("--version")) {
+console.log(`
+Xavier v1.0.0
+Codename: Xenofon
+`.trim());
+  process.exit(0);
+}
+
+if(args.includes("--init")) {
+  if(fs.existsSync(process.cwd() + "/routes")) {
+    console.error("Project already initialized");
     process.exit(1);
   }
-  //@ts-ignore
-  if (cpu > cpuLimit) {
-    console.error(`CPU limit exceeded ${cpu}`);
-    process.exit(1);
+  if(!fs.existsSync(process.cwd() + "/uploads")) {
+    fs.mkdirSync(process.cwd() + "/uploads");
   }
-}
-
-setInterval(watchMemory, 1000);
-
-types = types.join("\n") as any;
-types += `
-type Schema = {
-  /**
-   * @description The name of the collection
-   */
- name: string,
-   /**
-         * @private;
-         */ 
- required?: any[],
-/**
-          * @description The updateable object is used to determine which fields can be updated by the user.
-          * @param for The field that is used to determine if the user is the owner
-          * @param owner The fields that can be updated by the owner
-          * @param other The fields that can be updated by other users
-          */
-  updateable?: {
-          for: string,
-          owner: () => string[],
-          other: () => string[]
-  },
-  fields: {
-      [key: string]: string
-  },
-  deletable?: {
-          for: string,
-          owner: boolean,
-          other: boolean
-  },
-  viewable?: {
-          for: string,
-          owner: () => string[],
-          other: () => string[]
-  },
-    /**
-         * @description The related object is used to determine which fields are related to other collections
-         * @param key The name of the related collection
-         * @param fields The fields that are related to the collection
-         */
-  related?: {
-      [key: string]: {
-          fields: string[]
-      }
-  },
-     /**
-         * @description The restrict object is used to determine if the user can update or delete the collection
-         */
-  restrict?: boolean,
-  auth?: boolean, 
-}
-declare global {
-var crud: {
-    schema(data: Schema): {
-      /**
-       * @description The admin object allows you to use custom validation and logic for the collection bypassing schema restrictions and authentication
-       */
-      admin: {
-        insertOne: (data: any) => {
-              id: any,
-              created_at: Date,
-              updated_at: Date, 
-              [key: string]: any,
-              error: null | string
-        }
-        getAll: () => [{
-              id: any,
-              created_at: Date,
-              updated_at: Date,
-              [key: string]: any
-        }]
-        viewAll: () =>  [{
-              id: any,
-              created_at: Date,
-              updated_at: Date,
-              [key: string]: any
-        }]
-        update: (id: string, data: any) => {
-              id: any,
-              created_at: Date,
-              updated_at: Date, 
-              [key: string]: any,
-              error: null | string
-        }
-        delete: (id: string) => {
-              id: any,
-              created_at: Date,
-              updated_at: Date, 
-              [key: string]: any,
-              error: null | string
-        }
+  if(!fs.existsSync(process.cwd() + "/config.ts")) {
+    fs.writeFileSync(process.cwd() + "/schema.cbf", `
+    collection users {
+      name: text & required,
+      email: text  & required,
     }
-        
-        /**
-         * @description The restrict object is used to determine if the user can update or delete the collection
-         */
-        restrict: boolean,
-        /**
-         * @description The auth object is used to determine if the collection requires authentication
-         */
-        auth: boolean,
-        /**
-         * @description Insert a new document into the collection
-         * @param id The id of the document 
-         * @param data The data to insert into the collection
-         * @returns The new document
-         */
-        insertOne: (data: any) => {
-            id: any,
-            created_at: Date,
-            updated_at: Date, 
-            [key: string]: any
-        }
-        /**
-         * 
-         * @param query  The query to match documents 
-         * @description Match documents in the collection
-         * @returns 
-         */
-        match: (query: {
-            [key: string]: any
-            id?: any
-        }) =>  [{
-            id: any,
-            created_at: Date,
-            updated_at: Date, 
-            [key: string]: any
-        }],
-        /**
-         * @description Update a document in the collection
-         * @param id The id of the document
-         * @param data 
-         * @returns 
-         */
-        update: (id: string, data: any) =>  {
-            id: any,
-            created_at: Date,
-            updated_at: Date, 
-            [key: string]: any
-        }
-        /**
-         * @description Find a document based on the id
-         * @param id The id of the document
-         * @returns 
-         */
-        findOne: (id: string) =>  {
-            id: any,
-            created_at: Date,
-            updated_at: Date,
-            [key: string]: any
-        }, 
-        /**
-         * @description Get all documents in the collection
-         * @returns All documents in the collection
-         */
-        getAll: () => [{
-            id: any,
-            created_at: Date,
-            updated_at: Date,
-            [key: string]: any
-        }],
-        /**
-         * @description Authenticate with a password
-         * @param data  The data to authenticate with
-         * @returns 
-         */
-        authWithPassword: (data:{email: string, password: string}) => {
-            id: any,
-            created_at: Date,
-            updated_at: Date, 
-            error: null | string,
-            token: string,
-            [key: string]: any
-        },
-        /**
-         * @description Delete a document in the collection
-         * @param id The id of the document
-         * @returns 
-         */
-        delete: (id: string) => any
-    };
-    /**
-     * @description Log unreachable errors to data/logs.txt
-     * @param message 
-     * @returns 
-     */
-    error: (message: string) => any
-    /**
-     * @description Sync the collections with the database
-     * @returns void
-     */
-    sync(): void
-    /**
-     * @description Holder for all schemas
-     * @returns []
-     */
-    collections: any[] 
-}
-var RequestData: Request  & { 
-    params: {
-        [key: string]: any
-    }
-}
-}
-`;
-
-fs.mkdirSync(process.cwd() + "/types", { recursive: true });
-fs.writeFileSync(process.cwd() + "/types/types.ts", types);
-//@ts-ignore
-globalThis.crud = crud;
-export const bc = new BroadcastChannel("crud");
-import { responseCodes } from "./enums/http_response_codes";
-
-const routes = new globalThis.Bun.FileSystemRouter({
-  style: "nextjs",
-  dir: process.cwd() + "/routes",
-});
-globalThis.wssClients = [];
-
-export default {
-  port: process.env.HTTP_REQUEST_PORT || 3000,
-  websocket: {
-    async open(ws) {
-      ws.send(JSON.stringify({ message: "connected" }));
-      globalThis.wssClients.push(ws);
-    },
-    async message(ws) {
-      console.log("message");
-    },
-    async close(ws) {
-      globalThis.wssClients = globalThis.wssClients.filter(
-        (client) => client !== ws
-      );
-    },
-  },
-  async fetch(req, res) {
-    let url = new URL(req.url);
-    if (res.upgrade(req) && url.pathname === "/ws/realtime") {
-      return new Response(null, { status: 101 });
-    }
-    let path = url.pathname;
-    let route = routes.match(path); 
-    if (
-      url.pathname.includes("/collection/") &&
-      req.method.toLowerCase() === "options"
-    ) {
-      return new Response(null, {
-        status: 200,
-        headers: { "Access-Control-Allow-Origin": "*" },
-      });
-    }
-    if (path === "/verifyToken" && req.method.toLowerCase() === "options") {
-      return new Response(null, {
-        status: 200,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "Authorization",
-        },
-      });
-    }
-    if (path === "/verifyToken" && req.method.toLowerCase() === "post") {
-      let token = req.headers.get("Authorization")?.split("Bearer ")[1] || ""; 
-      if (!token) {
-        return new Response(JSON.stringify({ error: "401 Unauthorized" }), {
-          status: responseCodes.unauthorized,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
-      } 
-      if (!(await  jwt.verify(token, process.env.SECRET_KEY, {algorithms: ['HS256']}) )) {
-        return new Response(JSON.stringify({ error: "401 Unauthorized" }), {
-          status: responseCodes.unauthorized,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
-      }
-      return new Response(JSON.stringify({ message: "200 OK" }), {
-        status: 200,
+    end;
+    `.trim()); 
+  }
+  if(!fs.existsSync(process.cwd() + "/routes")) {
+    fs.mkdirSync(process.cwd() + "/routes");
+    fs.writeFileSync(process.cwd() + "/routes/index.ts", `
+    import xavier from "xavierdb/client";
+    export default function GET (req: typeof RequestData) {
+      return new Response(JSON.stringify({message: "Hello World"}), {
+        status: responseCodes.ok,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
+          "Access-Control-Allow-Origin": "*"
+        }
+      }); 
+  }`.trim());
+  fs.writeFileSync(process.cwd() + "/.env", env_example);
     }
+  
+  console.log(`
+  ${ansiColors.green("✨ Project initialized successfully ✨")}
+  To start the server run the following command:
+  ${ansiColors.blue("xavier --serve")}
+  `)
+  process.exit(0);
 
-    if (url.pathname.includes("/collection/")) {
-      let name = url.pathname.split("/")[2];
-      let method = url.pathname.split("/")[3]  
-      if(method === "getAll"){
-        let collection = config.collections.find(
-          (collection) => collection.$.name === name
-        );
-        if (!collection) {
-          return new Response("404 Not Found", {
-            status: responseCodes.notfound,
-          });
-        }
-        let response = await collection[method]({ token: req.headers.get("Authorization")?.split("Bearer ")[1] || "" });
-        return new Response(JSON.stringify(response), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+  } 
+  
+ 
+
+function generateTypes(config: any) {
+    // generate types from config
+    config.collections.map((collection) => {
+      collection.$.fields["created_at"] = "Date";
+      collection.$.fields["updated_at"] = "Date";
+      collection.$.fields["id"] = "any";  
+      collection.$.fields["error"] = "null | Object";
+      let keys = Object.keys(collection.$.fields); 
+      let required = collection.$.required || [];
+      let fields = keys
+        .map((key) => {
+          let type = collection.$.fields[key].toLowerCase();
+          switch (true) {
+            case type === "text":
+              type = "string";
+              break;
+            case type === "integer":
+              type = "number";
+              break;
+            case type === "real":
+              type = "number";
+              break;
+            case type === "date":
+              type = "Date";
+              break;
+            case type === "blob":
+              type = "ArrayBuffer";
+              break;
+            default:
+              type = "any";
+              break;
+          }
+          if (key === "created_at") return `${key}?: Date`;
+          if (key === "updated_at") return `${key}?: Date`;
+          return `${key}${required.includes(key) ? "" : "?"}: ${type}`;
+        })
+        .join(", "); 
+      fs.mkdirSync(process.cwd() + `/node_modules/xavierdb/types/${collection.$.name}`, { recursive: true }); 
+      fs.writeFileSync(process.cwd() + '/node_modules/xavierdb/index.d.ts', type.trim())
+      fs.writeFileSync(process.cwd() + `/node_modules/xavierdb/types/${collection.$.name}/index.d.ts`, `export   type ${collection.$.name} = {${fields}}; export default ${collection.$.name} `); 
+    });     
+}
+ 
+if(args.includes("--serve")) { 
+  var rateLimitBucket = []
+  let memoryLimit = process.env.MEMORY_LIMIT || 1000000;
+  let cpuLimit = process.env.CPU_LIMIT || 100;
+  globalThis.compression_level = process.env.COMPRESSION_LEVEL || 1; // 1-9
+  function watchMemory() {
+    let used = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    let cpu = process.cpuUsage().user / 1000;
+    //@ts-ignore
+    if (used > memoryLimit) {
+      console.error(`Memory limit exceeded ${used}MB`);
+      if (process.env.LOG_LEVEL?.toLocaleLowerCase() === "error") {
+        process.exit(1);
+      }else {
+         fs.appendFileSync(process.cwd() + "/logs.txt", `Memory limit exceeded ${used}MB\n`);
       }
-      let data = await req.json();
-      let collection = config.collections.find(
-        (collection) => collection.$.name === name
-      );
-      if (!collection) {
-        return new Response("404 Not Found", {
-          status: responseCodes.notfound,
-        });
-      }
-      if (!collection[method]) {
-        return new Response("404 Not Found", {
-          status: responseCodes.notfound,
-        });
-      }
-      if (method === "getOne") {
-        let options = data.options || {};
-        data = data.id;
-        options.token = req.headers.get("Authorization")?.split("Bearer ")[1] || "";
-        return new Response(
-          JSON.stringify(await collection[method](data, options)),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      if (method === "update") { 
-        if (!data.id || !data.data){
-          return new Response(`Missing required fields`, {
-            status: responseCodes.missingRequiredFields,
-          });
-        }
-        
-        let id = data.id; 
-        let token = req.headers.get("Authorization")?.split("Bearer ")[1] || "";
-        var dt = await collection[method](id, data.data, { token }); 
-        return new Response(JSON.stringify(dt), { status: dt.code || 200, headers: { "Content-Type": "application/json" } }); 
-      }
-      if (method === "delete") {
-        let id = data.id;
-        let res = await collection[method](id, { token: req.headers.get("Authorization")?.split("Bearer ")[1] || "" });
-        return new Response(JSON.stringify(res), {
-          status: res.code || 200,
-          headers: { "Content-Type": "application/json" },
-        }); 
-      }
-      let response = await collection[method](data);
-      return new Response(JSON.stringify(response), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      process.exit(1);
     }
-    try {
-      if (route) {
-        let mod = await import(route.filePath);
-        if (!mod.default) {
+    //@ts-ignore
+    if (cpu > cpuLimit) {
+      console.error(`CPU limit exceeded ${cpu}`);
+      if (process.env.LOG_LEVEL?.toLocaleLowerCase() === "error") {
+        process.exit(1);
+      }else{
+        fs.appendFileSync(process.cwd() + "/logs.txt", `CPU limit exceeded ${cpu}\n`);
+      }
+      process.exit(1);
+    }
+  }
+  
+  setInterval(watchMemory, 1000);
+
+   
+  if (!process.env.HTTP_REQUEST_PORT) {
+    console.error("HTTP_REQUEST_PORT environment variable is required");
+    process.exit(1);
+  }
+  if (!process.env.TOKEN_SECRET) {
+    console.error("TOKEN_SECRET environment variable is required");
+    process.exit(1);
+  }
+   
+  if (!fs.existsSync(process.cwd() + "/routes")) {
+    console.error("routes directory is required run xavier --init to initialize the project");
+    process.exit(1);
+  }
+   
+  //@ts-ignore 
+  
+ var config;
+ 
+ if(!fs.existsSync(process.cwd() + "/schema.cbf")) {
+    throw new Error("Schema file not found");
+ }
+   
+  const routes = new globalThis.Bun.FileSystemRouter({
+    style: "nextjs",
+    dir: process.cwd() + "/routes",
+  });
+  globalThis.wssClients = []; 
+  function parseToSeconds(time: string) {
+    if(!time) return null;
+    let seconds = 0;
+    let timeArray = time.split("");
+    let timeUnit = timeArray[timeArray.length - 1];
+    let timeValue = parseInt(timeArray.slice(0, timeArray.length - 1).join(""));
+    switch (timeUnit) {
+      case "s":
+        seconds = timeValue;
+        break;
+      case "m":
+        seconds = timeValue * 60;
+        break;
+      case "h":
+        seconds = timeValue * 60 * 60;
+        break;
+      case "d":
+        seconds = timeValue * 60 * 60 * 24;
+        break;
+      case "w":
+        seconds = timeValue * 60 * 60 * 24 * 7;
+        break;
+      case "y":
+        seconds = timeValue * 60 * 60 * 24 * 365;
+        break;
+      default:
+        seconds = 0;
+        break;
+    }
+    return seconds * 1000;
+  }
+  setInterval(() => {
+    for(let i = 0; i < rateLimitBucket.length; i++) {
+      if(rateLimitBucket[i].uses >= process.env.RATELIMITS_MAX_REQUESTS || 100) {
+        console.log(`Removed token ${rateLimitBucket[i].token.slice(0, 5)} from bucket: ${rateLimitBucket[i].uses} requests`);
+        rateLimitBucket.splice(i, 1);  
+      }
+    }
+  }, parseToSeconds(process.env.RATELIMITS_WINDOW) || 1000);
+  Bun.serve({ 
+    port: process.env.HTTP_REQUEST_PORT || 3000,
+    websocket: {
+      async open(ws) {
+        ws.send(JSON.stringify({ message: "connected" }));
+        globalThis.wssClients.push(ws);
+      },
+      async message(ws) {
+        console.log("message");
+      },
+      async close(ws) {
+        globalThis.wssClients = globalThis.wssClients.filter(
+          (client) => client !== ws
+        );
+      },
+    },
+    async fetch(req, res) {
+      let url = new URL(req.url);
+      if (res.upgrade(req) && url.pathname === "/ws/realtime") {
+        return new Response(null, { status: 101 });
+      } 
+      if(url.pathname.startsWith('/files')) {
+        var  collection = url.pathname.split("/files/")[1].split("/")[0];
+        var  f  = url.pathname.split(collection + "/")[1]; 
+        if(!fs.existsSync(process.cwd() + `/uploads/${collection}/${f}`)) {
           return new Response("404 Not Found", {
             status: responseCodes.notfound,
           });
-        }
-        let name = mod.default.name.toLowerCase();
-        if (name === "options") {
-          return mod.default(req);
-        }
-        if (name.includes("_authenticated")) {
-          // handle options request
-          if (req.method.toLowerCase() === "options") {
+        }  
+        let fileStream = fs.readFileSync(process.cwd() + `/uploads/${collection}/${f}`)
+        let headers = {
+          "Content-Type":  await file(process.cwd() + `/uploads/${collection}/${f}`).type, 
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+          "Content-Encoding": "gzip",
+        }; 
+        let stats = fs.statSync(process.cwd() + `/uploads/${collection}/${f}`);
+        headers["Content-Length"] = stats.size; 
+        return new Response(Bun.gzipSync(fileStream), {
+          status: responseCodes.ok,
+          headers: headers,
+        });
+      }  
+
+      // if bucket doesnt include token, add it
+      if (req.headers.get("Authorization-Session") && !rateLimitBucket.find((bucket) => bucket.token === req.headers.get("Authorization-Session"))) {
+        rateLimitBucket.push({token: req.headers.get("Authorization-Session"), time: Date.now(), lastTime: Date.now(), uses: 0}); 
+        console.log(`Added token ${req.headers.get("Authorization-Session").slice(0, 5)} to bucket`);
+      }
+      try {
+        if(process.env.RATELIMITS_ENABLED && url.pathname === "/auth/session") {
+          if(req.method.toLowerCase() === "options") {
             return new Response(null, {
-              status: 200,
+              status: responseCodes.ok,
               headers: {
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Authorization",
+                "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
               },
             });
           }
-          let method = mod.default.name.split("_")[0];
-          if (req.method.toLowerCase() !== method.toLowerCase()) {
-            return new Response("405 Method Not Allowed", {
-              status: responseCodes.methodnotallowed,
+          let token = jwt.sign({ id: Math.random() }, process.env.TOKEN_SECRET || "secret", { expiresIn: "1h" });
+          rateLimitBucket.push({token, time: Date.now(), lastTime: Date.now(), uses: 0});
+          return new Response(token, {
+            status: responseCodes.ok,
+            headers: { 
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+            },
+          });
+        }
+        if(process.env.RATELIMITS_ENABLED && !req.headers.get("Authorization-Session")) {
+          if(req.method.toLowerCase() === "options") {
+            return new Response(null, {
+              status: responseCodes.ok,
+              headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+              },
+            });
+          } 
+          return new Response(JSON.stringify({ message: "Unauthorized" }), {
+            status: responseCodes.unauthorized,
+            headers: {
+              "Content-Type":  "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+            }
+          });
+        }
+        if(process.env.RATELIMITS_ENABLED ) {
+          function Res(){
+            return new Response(JSON.stringify({ message: "Unauthorized" }), {
+              status: responseCodes.unauthorized,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+              },
             });
           }
-          req.authenticated_user = null;
-          req.token = null;
-          let { isAuthenticated, isNotAuthenticated } = mod.default(req);
-          let token =   req.headers.get("Authorization")?.split("Bearer ")[1] || "";
-          if (!token) {
-            return isNotAuthenticated;
+           try {
+            jwt.verify(req.headers.get("Authorization-Session"), process.env.TOKEN_SECRET || "secret")
+           } catch (error) {
+            return Res();
+           }
+          let verified = jwt.verify(req.headers.get("Authorization-Session"), process.env.TOKEN_SECRET || "secret");
+          let exp = verified.exp;
+           
+          if (Date.now() >= exp * 1000) {
+            return  Res();
           }
-          if (!(await crud.jwt.verify(token))) { 
-            return isNotAuthenticated;
+          if(!verified) {
+            return  Res();
+          } 
+        }  
+        let token = req.headers.get("Authorization-Session") || "";
+        let bucket = rateLimitBucket.find((bucket) => bucket.token.toString() === token) || 0; 
+        if (process.env.RATELIMITS_ENABLED) {
+          if (bucket === 0) {
+            console.log("Bucket not found"); 
+            rateLimitBucket.push({token, time: Date.now(), lastTime: Date.now(), uses: 0});
+          }else{
+            if (bucket.uses >= (parseInt(process.env.RATELIMITS_MAX_REQUESTS) || 100)) { 
+              if (req.method.toLowerCase() === "options") {
+                return new Response(null, {
+                  status: responseCodes.ok,
+                  headers: {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+                  },
+                });
+              }
+              return new Response(JSON.stringify({ message: "Too many requests" }), {
+                status: responseCodes.tooManyRequests,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                  "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+                },
+              }); 
+            }
           }
-          req.authenticated_user = crud.jwt.decode(token);
-          req.token = token;
-          return isAuthenticated;
-        }
-        if (req.method.toLowerCase() === "options") {
-          return new Response(null, {
-            status: 200,
-            headers: { "Access-Control-Allow-Origin": "*" },
+         
+        } 
+        if (bucket) {
+          bucket.uses += 1;
+          bucket.lastTime = Date.now();
+          rateLimitBucket = rateLimitBucket.map((b) => {
+            if (b.token === token) {
+              return bucket;
+            }
+            return b;
           });
         }
-        if (req.method.toLowerCase() !== mod.default.name.toLowerCase()) {
-          return new Response("405 Method Not Allowed", {
-            status: responseCodes.methodnotallowed,
-          });
-        }
-        req.params = route.params || {};
-        let response = await mod.default(req);
-        return response;
-      } else {
-        return new Response("404 Not Found", {
-          status: responseCodes.notfound,
+      } catch (error) { 
+        return new Response("500 Internal Server Error", {
+          status: responseCodes.internalservererror,
           headers: {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
           },
         });
       }
-    } catch (error) {
-      if (process.env.LOG_LEVEL?.toLocaleLowerCase() === "error") {
-        throw new Error(error);
+
+      let path = url.pathname;
+      let route = routes.match(path); 
+   
+      try { 
+        if (route) { 
+          let mod = await import(route.filePath);
+          let requestSize = req.headers.get("content-length");
+          if (requestSize && process.env.HTTP_MAX_REQUEST_SIZE){
+            if (parseInt(requestSize) >=  parseInt(process.env.HTTP_MAX_REQUEST_SIZE)) {
+              return new Response(`Request size exceeded ${process.env.HTTP_MAX_REQUEST_SIZE} bytes`, {
+                status: responseCodes.payloadtoolarge,
+              });
+            }
+          }
+          if (!mod.default) {
+            return new Response("404 Not Found", {
+              status: responseCodes.notfound,
+            });
+          }
+          let name = mod.default.name.toLowerCase();
+          if (name === "options") { 
+            return mod.default(req);
+          }
+           
+          if (req.method.toLowerCase() === "options") {
+            return new Response(null, {
+              status: responseCodes.ok,
+              headers: { 
+                "Access-Control-Allow-Origin": "*" ,
+                "Access-Control-Allow-Headers": "Authorization, content-type, Authorization-Session",
+              },
+            });
+          }
+          if (req.method.toLowerCase() !== mod.default.name.toLowerCase()) {
+            return new Response("405 Method Not Allowed", {
+              status: responseCodes.methodnotallowed,
+              headers: { "Access-Control-Allow-Origin": "*", 
+              "Access-Control-Allow-Headers": "Authorization, content-type, Authorization-Session",},
+            });
+          }
+          req.params = route.params || {};
+          req.query = Object.fromEntries(url.searchParams.entries());
+          let response = await mod.default(req);
+          return response;
+        } else {
+          return new Response("404 Not Found", {
+            status: responseCodes.notfound,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*", 
+              "Access-Control-Allow-Headers": "Authorization, content-type, Authorization-Session",
+            },
+          });
+        }
+      } catch (error) {
+        if (process.env.LOG_LEVEL?.toLocaleLowerCase() === "error") {
+          console.error(error);
+          throw new Error(error);
+        }
+        return new Response("500 Internal Server Error", {
+          status: responseCodes.internalservererror,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*", 
+            "Access-Control-Allow-Headers": "Authorization, content-type, Authorization-Session",
+          },
+        });
       }
-      return new Response("500 Internal Server Error", {
-        status: responseCodes.internalservererror,
-      });
-    }
-  },
-};
-console.log(`Server is running on port ${process.env.HTTP_REQUEST_PORT}`);
+  }})
+  console.log(`
+🚀 Api running @ ${ansiColors.blue(`http://localhost:${process.env.HTTP_REQUEST_PORT}`)}
+Websocket running @ ws://localhost:${process.env.HTTP_REQUEST_PORT}/ws/realtime
+
+Listening to : ${Object.keys(routes.routes).join(", ")}
+   
+${ansiColors.green("✨ Server started successfully ✨")}
+Press Ctrl + C to stop the server
+`.trim());
+globalThis.serverRunning = true;
+  
+}
+process.on("unhandledRejection", (reason, promise) => { 
+  xavier.sync()
+  console.error(reason);
+  process.exit(1);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error(error); 
+  xavier.sync()
+  process.exit(1);
+});
+
+process.on("SIGINT", () => {
+  console.log("Server stopped"); 
+  xavier.sync()
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  console.log("Server stopped");
+  xavier.sync()
+  process.exit(0);
+}); 
+ 
+if(!globalThis.serverRunning) {
+  console.log(`
+--help - Show help
+--help-env - Show an example of used environment variables
+--version - Show version
+--init - Initialize the project
+--serve - Start the server
+  `.trim());
+process.exit(0);
+
+}
