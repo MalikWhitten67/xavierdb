@@ -1,0 +1,449 @@
+type Schema = {
+  /**
+   * @description The name of the collection
+   */
+  name: string;
+  /**
+   * @description The required fields in the collection
+   */
+  required?: any[];
+  /**
+   * @description The fields in the collection
+   */
+  fields: {
+    [key: string]: string;
+  };
+
+  /**
+   * @method  relations
+   * @description The related object is used to expand fields from related collections 
+   * @returns void
+   */
+  relations?: [{
+    /**
+     * @description The collection to expand fields from
+     */
+    collection?: string;
+    /**
+     * @description The field to match the related collection with
+     */
+    using?: string;
+  }];
+  /**
+   * @description The restrict object is used to determine if the user can update or delete the collection
+   */
+  restrict?: boolean;
+  auth?: boolean;
+};
+declare global {
+  var crud: {
+    jwt: {
+      /**
+       * @description Create a new token
+       * @param token The token to verify
+       * @returns 
+       */
+       verify: (token: string) => Promise<boolean>;
+      /**
+       * @description Verify a token
+       * @param token The token to verify
+       * @returns 
+       */
+      create: (token: { id: any; iat: Date; exp: Date }) => string;
+
+      /**
+       * @description decode a token
+       * @param token The token to verify
+       * @returns 
+       */
+      decode: (token: string) => Promise<{
+        id: any;
+        iat: Date;
+        exp: Date;
+        [key: string]: any;
+      }>
+    };
+    schema(data: Schema): {
+      /**
+       * @description The restrict object is used to determine if the user can update or delete the collection
+       */
+      restrict: boolean;
+      /**
+       * @description The auth object is used to determine if the collection requires authentication
+       */
+      auth: boolean;
+      /**
+       * @description Insert a new document into the collection
+       * @param id The id of the document
+       * @param data The data to insert into the collection
+       * @returns The new document
+       */
+      insertOne: (data: any) => {
+        id: any;
+        created_at: Date;
+        updated_at: Date;
+        [key: string]: any;
+      };
+      /**
+       *
+       * @param query  The query to match documents
+       * @description Match documents in the collection
+       * @returns
+       */
+      match: (
+        query: { [key: string]: any; id?: any },
+        options: { expand?: null | Array<String>, limit?: number, sort?: 'asc' | 'desc'}
+      ) => [
+        {
+          id: any;
+          created_at: Date;
+          updated_at: Date;
+          [key: string]: any;
+        }
+      ];
+      /**
+       * @description Update a document in the collection
+       * @param id The id of the document
+       * @param data
+       * @returns
+       */
+      update: (
+        id: string,
+        data: any
+      ) => {
+        id: any;
+        created_at: Date;
+        updated_at: Date;
+        [key: string]: any;
+      };
+      /**
+       * @description Find a document based on the id
+       * @param id The id of the document
+       * @returns
+       */
+      findOne: (
+        id: string,
+        options: { expand: null | Array<String> }
+      ) => {
+        id: any;
+        created_at: Date;
+        updated_at: Date;
+        [key: string]: any;
+      };
+      /**
+       * @description Get all documents in the collection
+       * @returns All documents in the collection
+       */
+      getAll: (options: { expand: null | Array<String> }) => [
+        {
+          id: any;
+          created_at: Date;
+          updated_at: Date;
+          [key: string]: any;
+        }
+      ];
+      /**
+       * @method find
+       * @description find matching documents in the collection based on query sort and limit
+       * @param query The query to match documents
+       * @param options The options to sort and limit the documents
+       * @param options.sort The field to sort the documents by
+       * @param options.limit The number of documents to return
+       */
+      find: (
+        query: { [key: string]: any },
+        options: { sort: 'asc' | 'desc'; limit: number }
+      ) => [
+        {
+          id: any;
+          created_at: Date;
+          updated_at: Date;
+          [key: string]: any;
+        }
+      ];
+      /**
+       * @description Authenticate with a password
+       * @param data  The data to authenticate with 
+       */
+      authWithPassword: (data: { EmailOrUsername: string; password: string }) => {
+        id?: any;
+        created_at?: Date;
+        updated_at?: Date;
+        error?: null | string;
+        token?: string;
+        [key: string]: any;
+      };
+        /**
+       * @description Allows you to upload a file to the collection
+       * @param File The file to upload
+       */
+      upload: (File: FormData, {filename: string, collection: any}) => {fileId: string};
+
+      /**
+       * @description Delete a document in the collection
+       * @param id The id of the document
+       * @returns
+       */
+      delete: (id: string) => any;
+    };
+    /**
+     * @description Log unreachable errors to data/logs.txt
+     * @param message
+     * @returns
+     */
+    error: (message: string) => any;
+    /**
+     * @description Sync the collections with the database
+     * @returns void
+     */
+    sync(): void;
+    /**
+     * @description Holder for all schemas
+     * @returns []
+     */
+    collections: any[];
+  };
+
+  var RequestData: Request & {
+    params: {
+      [key: string]: any;
+    };
+    query: {
+      [key: string]: any; 
+    }
+  };
+}
+
+export  var crud: {
+  collection: (name: string) =>  {
+     /**
+      * @description Insert a new document into the collection
+      * @param data 
+      * @returns 
+      */
+     insertOne: (data: any) => {};
+      /**
+        * @description Update a document in the collection
+        * @param id The id of the document
+        * @param data The data to update the document with
+        * @returns 
+        */
+      update: (id: string, data: any) => {};
+      /**
+        * @description Get all documents in the collection
+        * @returns 
+        */
+      getAll: () => {};
+      /**
+        * @description Find a document based on the id
+        * @param id The id of the document
+        * @returns 
+        */
+      findOne: (id: string) => {};
+      /**
+        * @description Delete a document in the collection
+        * @param id The id of the document
+        * @returns 
+        */
+      delete: (id: string) => {};
+      /**
+        * @description Match documents in the collection
+        * @param query The query to match documents
+        * @returns 
+        */
+      match: (query: { [key: string]: any }, options: any) => {};
+      /**
+        * @description Insert many documents into the collection 
+        * @param data The data to insert into the collection
+        * @returns  
+        */
+      insertMany: (data: any[]) => {};
+      /**
+        * @description Delete many documents in the collection
+        * @param query The query to match documents
+        * @returns 
+        */
+      deleteMany: (query: any) => {};
+      /**
+        * @description Update many documents in the collection
+        * @param query The query to match documents
+        * @param data The data to update the documents with
+        * @returns 
+        */
+      updateMany: (query: any, data: any) => {};
+
+      /**
+       * @method count
+       * @description Count the number of documents in the collection
+       * @param query any
+       * @returns {number}
+       */
+      count: (query: any) => {};
+     
+  };
+  jwt: {
+    /**
+     * @description Create a new token
+     * @param token The token to verify
+     * @returns 
+     */
+     verify: (token: string) => Promise<boolean>;
+    /**
+     * @description Verify a token
+     * @param token The token to verify
+     * @returns 
+     */
+    create: (token: { id: any; iat: Date; exp: Date }) => string;
+
+    /**
+     * @description decode a token
+     * @param token The token to verify
+     * @returns 
+     */
+    decode: (token: string) => Promise<{
+      id: any;
+      iat: Date;
+      exp: Date;
+      [key: string]: any;
+    }>
+  };
+  schema(data: Schema): {
+    /**
+     * @description The restrict object is used to determine if the user can update or delete the collection
+     */
+    restrict: boolean;
+    /**
+     * @description The auth object is used to determine if the collection requires authentication
+     */
+    auth: boolean;
+    /**
+     * @description Insert a new document into the collection
+     * @param id The id of the document
+     * @param data The data to insert into the collection
+     * @returns The new document
+     */
+    insertOne: (data: any) => {
+      id: any;
+      created_at: Date;
+      updated_at: Date;
+      [key: string]: any;
+    };
+    /**
+     *
+     * @param query  The query to match documents
+     * @description Match documents in the collection
+     * @returns
+     */
+    match: (
+      query: { [key: string]: any; id?: any },
+      options: { expand?: null | Array<String>, limit?: number, sort?: 'asc' | 'desc'}
+    ) => [
+      {
+        id: any;
+        created_at: Date;
+        updated_at: Date;
+        [key: string]: any;
+      }
+    ];
+    /**
+     * @description Update a document in the collection
+     * @param id The id of the document
+     * @param data
+     * @returns
+     */
+    update: (
+      id: string,
+      data: any
+    ) => {
+      id: any;
+      created_at: Date;
+      updated_at: Date;
+      [key: string]: any;
+    };
+    /**
+     * @description Find a document based on the id
+     * @param id The id of the document
+     * @returns
+     */
+    findOne: (
+      id: string,
+      options: { expand: null | Array<String> }
+    ) => {
+      id: any;
+      created_at: Date;
+      updated_at: Date;
+      [key: string]: any;
+    };
+    /**
+     * @description Get all documents in the collection
+     * @returns All documents in the collection
+     */
+    getAll: (options: { expand: null | Array<String> }) => [
+      {
+        id: any;
+        created_at: Date;
+        updated_at: Date;
+        [key: string]: any;
+      }
+    ];
+    /**
+     * @method find
+     * @description find matching documents in the collection based on query sort and limit
+     * @param query The query to match documents
+     * @param options The options to sort and limit the documents
+     * @param options.sort The field to sort the documents by
+     * @param options.limit The number of documents to return
+     */
+    find: (
+      query: { [key: string]: any },
+      options: { sort: 'asc' | 'desc'; limit: number }
+    ) => [
+      {
+        id: any;
+        created_at: Date;
+        updated_at: Date;
+        [key: string]: any;
+      }
+    ];
+    /**
+     * @description Authenticate with a password
+     * @param data  The data to authenticate with 
+     */
+    authWithPassword: (data: { EmailOrUsername: string; password: string }) => {
+      id?: any;
+      created_at?: Date;
+      updated_at?: Date;
+      error?: null | string;
+      token?: string;
+      [key: string]: any;
+    };
+      /**
+     * @description Allows you to upload a file to the collection
+     * @param File The file to upload
+     */
+    upload: (File: FormData, {filename: string, collection: any}) => {fileId: string};
+
+    /**
+     * @description Delete a document in the collection
+     * @param id The id of the document
+     * @returns
+     */
+    delete: (id: string) => any;
+  };
+  /**
+   * @description Log unreachable errors to data/logs.txt
+   * @param message
+   * @returns
+   */
+  error: (message: string) => any;
+  /**
+   * @description Sync the collections with the database
+   * @returns void
+   */
+  sync(): void;
+  /**
+   * @description Holder for all schemas
+   * @returns []
+   */
+  collections: any[];
+};
