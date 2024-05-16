@@ -85,4 +85,4 @@ Lastly run `./xavier --serve`
 # Build yourself
 You can use custom code and build your own executable by following the steps below
 // platform = windows | linux 
-Simply clone the project then extract and run `bun build --target=bun  ./entry.ts  --compile --outfile ./platform/xavier`  
+Simply clone the project then extract and run `./build.sh file`  
