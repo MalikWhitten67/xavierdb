@@ -1,19 +1,66 @@
 //@ts-nocheck
-import fs from "fs"; 
+import fs from "fs";
 import { responseCodes } from "./enums/http_response_codes";
-import jwt from 'jsonwebtoken';
-import type from  './ext/types.txt';  
-import { file } from 'bun'
-import env_example from './ext/.env.example.txt';
-import crud from './ext/crud.txt'
-import Bun from 'bun'
-import ansiColors from "ansi-colors"; 
-import './transpiler/transpiler'   
-if(!fs.existsSync(process.cwd() + "/node_modules/xavierdb/crud/index.ts")) { 
-  fs.mkdirSync(process.cwd() + "/node_modules/xavierdb/crud", { recursive: true });
-  fs.writeFileSync(process.cwd() + "/node_modules/xavierdb/crud/index.ts", crud);
+import jwt from "jsonwebtoken";
+import type from "./ext/types.txt";
+import { file } from "bun";
+import env_example from "./ext/.env.example.txt";
+import crud from "./ext/crud.txt";
+import Bun from "bun";
+import ansiColors from "ansi-colors";
+import "./transpiler/transpiler";
+
+globalThis.optimizeMemory = function () {
+  // Optimize memory
+  console.log("Optimizing memory");
+  // Add memory optimization code here
+  
+}
+globalThis.optimizeCPU = function () {
+  // Optimize CPU
+  console.log("Optimizing CPU");
+  // Add CPU optimization code here
+
+}
+/**
+ * @description CacheNodes are xavier next clients that are used to cache data from the server
+ */
+const CacheNodes = []; 
+globalThis.pingCacheNodes = async function () {
+  if (amountOfUpdates > pingThreshold && CacheNodes.length > 0) {
+    CacheNodes.forEach(async (node) => {
+      try {
+        let res = await fetch(node + "/ping", {
+          method: "GET",
+          headers: {
+            "x-secret": process.env.REPLICATION_SECRET,
+          },
+        });
+        if (res.status === 200) {
+          console.log(`Pinged ${node} successfully`);
+        }
+      } catch (error) {
+        console.error(`Failed to ping ${node}`);
+      }
+    });
+    amountOfUpdates = 0; // Reset the count after pinging
+  } else {
+    amountOfUpdates++; // Increment the count
+  }
+};
+
+if (!fs.existsSync(process.cwd() + "/node_modules/xavierdb/crud/index.ts")) {
+  fs.mkdirSync(process.cwd() + "/node_modules/xavierdb/crud", {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    process.cwd() + "/node_modules/xavierdb/crud/index.ts",
+    crud
+  );
   // write package.json
-  fs.writeFileSync(process.cwd() + "/node_modules/xavierdb/package.json", `{
+  fs.writeFileSync(
+    process.cwd() + "/node_modules/xavierdb/package.json",
+    `{
   "name": "xavierdb",
   "version": "1.0.0",
   "main": "index.js",
@@ -28,29 +75,45 @@ if(!fs.existsSync(process.cwd() + "/node_modules/xavierdb/crud/index.ts")) {
     "jsonwebtoken": "latest"
   }
 }
-  `);
+  `
+  );
 }
-if(fs.existsSync(process.cwd() + "/schema.cbf")) {
-   !fs.existsSync(process.cwd() + "/node_modules/xavierdb") && fs.mkdirSync(process.cwd() + "/node_modules/xavierdb");
-   !fs.existsSync(process.cwd() + "/node_modules/xavierdb/client") && fs.mkdirSync(process.cwd() + "/node_modules/xavierdb/client"); 
-   let schema = await import(process.cwd() + "/schema/schema.json").then((mod) => mod.default);
-   schema.collections = schema.collections.map((collection) => {
-      Object.assign(collection, { $: { name: collection.name, fields: collection.fields, required: collection.required, relations: collection.relations } });
-      return collection;
-   });  
-   generateTypes(schema);
-   fs.writeFileSync(process.cwd() + "/node_modules/xavierdb/client/index.ts", `
+if (fs.existsSync(process.cwd() + "/schema.cbf")) {
+  !fs.existsSync(process.cwd() + "/node_modules/xavierdb") &&
+    fs.mkdirSync(process.cwd() + "/node_modules/xavierdb");
+  !fs.existsSync(process.cwd() + "/node_modules/xavierdb/client") &&
+    fs.mkdirSync(process.cwd() + "/node_modules/xavierdb/client");
+  let schema = await import(process.cwd() + "/schema/schema.json").then(
+    (mod) => mod.default
+  );
+  schema.collections = schema.collections.map((collection) => {
+    Object.assign(collection, {
+      $: {
+        name: collection.name,
+        fields: collection.fields,
+        required: collection.required,
+        relations: collection.relations,
+      },
+    });
+    return collection;
+  });
+  generateTypes(schema);
+  fs.writeFileSync(
+    process.cwd() + "/node_modules/xavierdb/client/index.ts",
+    `
    //@ts-nocheck  
    import crud from "xavierdb/crud"; 
-${
-  schema.collections.map((collection, index) => { 
+${schema.collections
+  .map((collection, index) => {
     return ` 
     import ${collection.name} from "xavierdb/types/${collection.name}";
     var crud${collection.name} = crud.schema({
       name: "${collection.name}",
       fields: ${JSON.stringify(collection.fields)},
       required: ${JSON.stringify(collection.required || [])},
-      relations: ${JSON.stringify(collection.relations.length > 0 ? collection.relations : [])},
+      relations: ${JSON.stringify(
+        collection.relations.length > 0 ? collection.relations : []
+      )},
       auth: ${collection.auth || false}
     })
     var crud${index} = {
@@ -58,7 +121,9 @@ ${
         return {
           /** 
            * @method insertOne
-           * @description Insert a single document into the ${collection.name} collection
+           * @description Insert a single document into the ${
+             collection.name
+           } collection
            * @param data ${collection.name}
            * @returns { ${collection.name}}
            * */
@@ -67,13 +132,17 @@ ${
           },
           /**
            * @method update
-           * @description Update a single document in the ${collection.name} collection
+           * @description Update a single document in the ${
+             collection.name
+           } collection
            * @param id any
            * @param data ${collection.name}
            * @returns { ${collection.name}}
            * */
           update: async function(id: any, data: ${collection.name}) {
-             return  await crud${collection.name}.update(id, data) as ${collection.name};
+             return  await crud${collection.name}.update(id, data) as ${
+      collection.name
+    };
           },
           /**
            * @method uplaod 
@@ -88,11 +157,15 @@ ${
             let formData = await req.formData();
             if(!formData) return  {error: "No file provided"}
             if(!formData.has("file")) return {error: "No file provided"} 
-            return await crud${collection.name}.upload(formData.get("file"), data) as any;
+            return await crud${
+              collection.name
+            }.upload(formData.get("file"), data) as any;
           },
           /**
            * @method delete
-           * @description Delete a single document in the ${collection.name} collection
+           * @description Delete a single document in the ${
+             collection.name
+           } collection
            * @param id any
            * @returns {boolean}
            * */
@@ -101,12 +174,16 @@ ${
           }, 
           /**
            * @method findOne
-           * @description Find a single document in the ${collection.name} collection by id
+           * @description Find a single document in the ${
+             collection.name
+           } collection by id
            * @param id any
            * @returns { ${collection.name}} 
            * */
           findOne: async function(id: any) {
-             return await crud${collection.name}.findOne(id) as ${collection.name};
+             return await crud${collection.name}.findOne(id) as ${
+      collection.name
+    };
           },
           /**
            * @method match
@@ -115,22 +192,43 @@ ${
            * @param options 
            * @returns 
            */
-           match: async function( query: { [key: string]: any; id?: any },
+          match: async function( query: { where?:{
+            contains?: { [key: string]: any },
+            equals?: any;
+            greaterThan?: any;
+            greaterThanOrEqual?:any;
+            lessThanOrEqual?: {value: any, field: string},
+            lessThan?: any;
+            notEqual?: {value: any, field: string},
+            notContains?: { [key: string]: any },
+            notEqual?: any; 
+            in?: [string],
+            notIn?: [string],
+            notContains?: any | {[key: string]: any},
+           }; id?: any },
            options: { limit?: number | undefined, sort?: 'asc' | 'desc' | undefined}) {
-             return await crud${collection.name}.match(query, options) as ${collection.name}[];
+             return await crud${collection.name}.match(query, options) as ${
+      collection.name
+    }[];
            },
            /**
             * @method insertMany
-            * @description Insert multiple documents into the ${collection.name} collection
+            * @description Insert multiple documents into the ${
+              collection.name
+            } collection
             * @param data ${collection.name}s
             * @returns { ${collection.name}[]}
             * */
           insertMany: async function(data: ${collection.name}[]) {
-             return await crud${collection.name}.insertMany(data) as ${collection.name}[];
+             return await crud${collection.name}.insertMany(data) as ${
+      collection.name
+    }[];
           } ,
           /**
            * @method deleteMany
-           * @description Delete multiple documents in the ${collection.name} collection
+           * @description Delete multiple documents in the ${
+             collection.name
+           } collection
            * @param query any
            * @returns {boolean}
            * */
@@ -139,17 +237,23 @@ ${
           },
           /**
            * @method updateMany
-           * @description Update multiple documents in the ${collection.name} collection
+           * @description Update multiple documents in the ${
+             collection.name
+           } collection
            * @param query any
            * @param data ${collection.name}
            * @returns [{ ${collection.name}}]
            * */
           updateMany: async function(query: any, data:${collection.name}) {
-             return await crud${collection.name}.updateMany(query, data) as ${collection.name};
+             return await crud${collection.name}.updateMany(query, data) as ${
+      collection.name
+    };
           },
           /**
            * @method count
-           * @description Count the number of documents in the ${collection.name} collection
+           * @description Count the number of documents in the ${
+             collection.name
+           } collection
            * @param query any
            * @returns {number}
            * */
@@ -162,7 +266,9 @@ ${
            * @returns { ${collection.name}[]}
            * */
           getAll: async function() {
-            return await crud${collection.name}.getAll() as ${collection.name}[];
+            return await crud${collection.name}.getAll() as ${
+      collection.name
+    }[];
           },
           /**
            * @method authWithPassword 
@@ -172,15 +278,28 @@ ${
            * @returns {${collection.name}}
            * */
           authWithPassword: async function(data:{EmailOrUsername: string, password: string}) {
-            return await crud${collection.name}.authWithPassword(data) as ${collection.name};
+            return await crud${collection.name}.authWithPassword(data) as ${
+      collection.name
+    };
+    
           },
+          /**
+           * @method on 
+           * @description Listen to changes in the posts collection
+           * @param event string
+           * @param callback Function
+           * @returns {void}
+           */
+          on: async function(event: string, callback: Function) {
+            return await crud${collection.name}.on(event, callback);
+          }
         }
       } 
     }
       
     `;
-  }).join(";\n")
-}
+  })
+  .join(";\n")}
  
 export const sync =  async function() {
   return await crud.sync();
@@ -203,10 +322,9 @@ declare global {
 export default {
   sync, 
   jwt: crud.jwt,
-  ${
-    schema.collections.map((collection, index) => {
-      return (
-          `
+  ${schema.collections
+    .map((collection, index) => {
+      return `
 ${collection.name}: crud${index}.schema({
 name: "${collection.name}",
 fields: ${JSON.stringify(collection.fields)},
@@ -214,16 +332,26 @@ required: ${JSON.stringify(collection.required || [])},
 relations: ${JSON.stringify(collection.relations || [])},
 auth: ${collection.auth || false}
 })  
-           ` )
-       }).join(",\n")
-       
-  }
+           `;
+    })
+    .join(",\n")}
    
-}`);
-}  
-let xavier = await import(process.cwd() + "/node_modules/xavierdb/client/index.ts").then((mod) => mod.default);
-xavier.sync()
- 
+}`
+  );
+}
+let xavier = await import(
+  process.cwd() + "/node_modules/xavierdb/client/index.ts"
+).then((mod) => mod.default);
+xavier.sync();
+
+Object.keys(xavier).map((key) => {
+  if(key === "sync" || key === "jwt") return;
+  let collection = xavier[key];
+  collection.on("change", () => {
+    globalThis.pingCacheNodes();
+  });
+});
+
 let args = process.argv.slice(2);
 if (!fs.existsSync(process.cwd() + "/data")) {
   fs.mkdirSync(process.cwd() + "/data");
@@ -231,7 +359,7 @@ if (!fs.existsSync(process.cwd() + "/data")) {
 if (!fs.existsSync(process.cwd() + "/data/db.sqlite")) {
   fs.writeFileSync(process.cwd() + "/data/db.sqlite", "");
 }
-if(!fs.existsSync(process.cwd() + "/node_modules")){
+if (!fs.existsSync(process.cwd() + "/node_modules")) {
   fs.mkdirSync(process.cwd() + "/node_modules");
 }
 if (!fs.existsSync(process.cwd() + "/logs")) {
@@ -239,51 +367,61 @@ if (!fs.existsSync(process.cwd() + "/logs")) {
 }
 if (args[0] && args[0].startsWith("--help")) {
   switch (true) {
-     case args.includes("--help-env"):
-      console.log(`
+    case args.includes("--help-env"):
+      console.log(
+        `
 Environment Variables
 ------
 ${env_example}
-   `.trim());
-
+   `.trim()
+      );
   }
-  console.log(`\n
+  console.log(
+    `\n
 --help - Show help
 --help-env - Show environment variables
 --version - Show version
 --init - Initialize the project
 --serve - Start the server
-  `.trim());
+  `.trim()
+  );
   process.exit(0);
 }
 if (args.includes("--version")) {
-console.log(`
+  console.log(
+    `
 Xavier v1.0.0
 Codename: Xenofon
-`.trim());
+`.trim()
+  );
   process.exit(0);
 }
 
-if(args.includes("--init")) {
-  if(fs.existsSync(process.cwd() + "/routes")) {
+if (args.includes("--init")) {
+  if (fs.existsSync(process.cwd() + "/routes")) {
     console.error("Project already initialized");
     process.exit(1);
   }
-  if(!fs.existsSync(process.cwd() + "/uploads")) {
+  if (!fs.existsSync(process.cwd() + "/uploads")) {
     fs.mkdirSync(process.cwd() + "/uploads");
   }
-  if(!fs.existsSync(process.cwd() + "/config.ts")) {
-    fs.writeFileSync(process.cwd() + "/schema.cbf", `
+  if (!fs.existsSync(process.cwd() + "/config.ts")) {
+    fs.writeFileSync(
+      process.cwd() + "/schema.cbf",
+      `
     collection users {
       name: text & required,
       email: text  & required,
     }
     end;
-    `.trim()); 
+    `.trim()
+    );
   }
-  if(!fs.existsSync(process.cwd() + "/routes")) {
+  if (!fs.existsSync(process.cwd() + "/routes")) {
     fs.mkdirSync(process.cwd() + "/routes");
-    fs.writeFileSync(process.cwd() + "/routes/index.ts", `
+    fs.writeFileSync(
+      process.cwd() + "/routes/index.ts",
+      `
     import xavier from "xavierdb/client";
     export default function GET (req: typeof RequestData) {
       return new Response(JSON.stringify({message: "Hello World"}), {
@@ -293,97 +431,77 @@ if(args.includes("--init")) {
           "Access-Control-Allow-Origin": "*"
         }
       }); 
-  }`.trim());
-  fs.writeFileSync(process.cwd() + "/.env", env_example);
-    }
-  
+  }`.trim()
+    );
+    fs.writeFileSync(process.cwd() + "/.env", env_example);
+  }
+
   console.log(`
   ${ansiColors.green("✨ Project initialized successfully ✨")}
   To start the server run the following command:
   ${ansiColors.blue("xavier --serve")}
-  `)
+  `);
   process.exit(0);
-
-  } 
-  
- 
+}
 
 function generateTypes(config: any) {
-    // generate types from config
-    config.collections.map((collection) => {
-      collection.$.fields["created_at"] = "Date";
-      collection.$.fields["updated_at"] = "Date";
-      collection.$.fields["id"] = "any";  
-      collection.$.fields["error"] = "null | Object";
-      let keys = Object.keys(collection.$.fields); 
-      let required = collection.$.required || [];
-      let fields = keys
-        .map((key) => {
-          let type = collection.$.fields[key].toLowerCase();
-          switch (true) {
-            case type === "text":
-              type = "string";
-              break;
-            case type === "integer":
-              type = "number";
-              break;
-            case type === "real":
-              type = "number";
-              break;
-            case type === "date":
-              type = "Date";
-              break;
-            case type === "blob":
-              type = "ArrayBuffer";
-              break;
-            default:
-              type = "any";
-              break;
-          }
-          if (key === "created_at") return `${key}?: Date`;
-          if (key === "updated_at") return `${key}?: Date`;
-          return `${key}${required.includes(key) ? "" : "?"}: ${type}`;
-        })
-        .join(", "); 
-      fs.mkdirSync(process.cwd() + `/node_modules/xavierdb/types/${collection.$.name}`, { recursive: true }); 
-      fs.writeFileSync(process.cwd() + '/node_modules/xavierdb/index.d.ts', type.trim())
-      fs.writeFileSync(process.cwd() + `/node_modules/xavierdb/types/${collection.$.name}/index.d.ts`, `export   type ${collection.$.name} = {${fields}}; export default ${collection.$.name} `); 
-    });     
+  // generate types from config
+  config.collections.map((collection) => {
+    collection.$.fields["created_at"] = "Date";
+    collection.$.fields["updated_at"] = "Date";
+    collection.$.fields["id"] = "any";
+    collection.$.fields["error"] = "null | Object";
+    let keys = Object.keys(collection.$.fields);
+    let required = collection.$.required || [];
+    let fields = keys
+      .map((key) => {
+        let type = collection.$.fields[key].toLowerCase();
+        switch (true) {
+          case type === "text":
+            type = "string";
+            break;
+          case type === "integer":
+            type = "number";
+            break;
+          case type === "real":
+            type = "number";
+            break;
+          case type === "date":
+            type = "Date";
+            break;
+          case type === "blob":
+            type = "ArrayBuffer";
+            break;
+          default:
+            type = "any";
+            break;
+        }
+        if (key === "created_at") return `${key}?: Date`;
+        if (key === "updated_at") return `${key}?: Date`;
+        return `${key}${required.includes(key) ? "" : "?"}: ${type}`;
+      })
+      .join(", ");
+    fs.mkdirSync(
+      process.cwd() + `/node_modules/xavierdb/types/${collection.$.name}`,
+      { recursive: true }
+    );
+    fs.writeFileSync(
+      process.cwd() + "/node_modules/xavierdb/index.d.ts",
+      type.trim()
+    );
+    fs.writeFileSync(
+      process.cwd() +
+        `/node_modules/xavierdb/types/${collection.$.name}/index.d.ts`,
+      `export   type ${collection.$.name} = {${fields}}; export default ${collection.$.name} `
+    );
+  });
 }
- 
-if(args.includes("--serve")) { 
-  var rateLimitBucket = []
-  let memoryLimit = process.env.MEMORY_LIMIT || 1000000;
-  let cpuLimit = process.env.CPU_LIMIT || 100;
-  globalThis.compression_level = process.env.COMPRESSION_LEVEL || 1; // 1-9
-  function watchMemory() {
-    let used = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-    let cpu = process.cpuUsage().user / 1000;
-    //@ts-ignore
-    if (used > memoryLimit) {
-      console.error(`Memory limit exceeded ${used}MB`);
-      if (process.env.LOG_LEVEL?.toLocaleLowerCase() === "error") {
-        process.exit(1);
-      }else {
-         fs.appendFileSync(process.cwd() + "/logs.txt", `Memory limit exceeded ${used}MB\n`);
-      }
-      process.exit(1);
-    }
-    //@ts-ignore
-    if (cpu > cpuLimit) {
-      console.error(`CPU limit exceeded ${cpu}`);
-      if (process.env.LOG_LEVEL?.toLocaleLowerCase() === "error") {
-        process.exit(1);
-      }else{
-        fs.appendFileSync(process.cwd() + "/logs.txt", `CPU limit exceeded ${cpu}\n`);
-      }
-      process.exit(1);
-    }
-  }
-  
-  setInterval(watchMemory, 1000);
 
-   
+if (args.includes("--serve")) {
+  var rateLimitBucket = []; 
+  globalThis.compression_level = process.env.COMPRESSION_LEVEL || 1; // 1-9
+ 
+
   if (!process.env.HTTP_REQUEST_PORT) {
     console.error("HTTP_REQUEST_PORT environment variable is required");
     process.exit(1);
@@ -392,27 +510,29 @@ if(args.includes("--serve")) {
     console.error("TOKEN_SECRET environment variable is required");
     process.exit(1);
   }
-   
+
   if (!fs.existsSync(process.cwd() + "/routes")) {
-    console.error("routes directory is required run xavier --init to initialize the project");
+    console.error(
+      "routes directory is required run xavier --init to initialize the project"
+    );
     process.exit(1);
   }
-   
-  //@ts-ignore 
-  
- var config;
- 
- if(!fs.existsSync(process.cwd() + "/schema.cbf")) {
+
+  //@ts-ignore
+
+  var config;
+
+  if (!fs.existsSync(process.cwd() + "/schema.cbf")) {
     throw new Error("Schema file not found");
- }
-   
+  }
+
   const routes = new globalThis.Bun.FileSystemRouter({
     style: "nextjs",
     dir: process.cwd() + "/routes",
   });
-  globalThis.wssClients = []; 
+  globalThis.wssClients = [];
   function parseToSeconds(time: string) {
-    if(!time) return null;
+    if (!time) return null;
     let seconds = 0;
     let timeArray = time.split("");
     let timeUnit = timeArray[timeArray.length - 1];
@@ -443,15 +563,32 @@ if(args.includes("--serve")) {
     return seconds * 1000;
   }
   setInterval(() => {
-    for(let i = 0; i < rateLimitBucket.length; i++) {
-      if(rateLimitBucket[i].uses >= process.env.RATELIMITS_MAX_REQUESTS || 100) {
-        console.log(`Removed token ${rateLimitBucket[i].token.slice(0, 5)} from bucket: ${rateLimitBucket[i].uses} requests`);
-        rateLimitBucket.splice(i, 1);  
+    for (let i = 0; i < rateLimitBucket.length; i++) {
+      if (
+        rateLimitBucket[i].uses >= process.env.RATELIMITS_MAX_REQUESTS ||
+        100
+      ) {
+        console.log(
+          `Removed token ${rateLimitBucket[i].token.slice(0, 5)} from bucket: ${
+            rateLimitBucket[i].uses
+          } requests`
+        );
+        rateLimitBucket.splice(i, 1);
       }
     }
   }, parseToSeconds(process.env.RATELIMITS_WINDOW) || 1000);
-  Bun.serve({ 
+  
+  console.log(process.env.HTTPS_ENABLED)
+  Bun.serve({
     port: process.env.HTTP_REQUEST_PORT || 3000,
+    ...(
+      process.env.HTTPS_ENABLED ? {
+        tls:{
+          key: Bun.file(process.cwd() +'/' + process.env.HTTPS_KEY),
+          cert: Bun.file(process.cwd() +'/' + process.env.HTTPS_CERT)
+        }
+      } : {}
+    ), 
     websocket: {
       async open(ws) {
         ws.send(JSON.stringify({ message: "connected" }));
@@ -470,130 +607,240 @@ if(args.includes("--serve")) {
       let url = new URL(req.url);
       if (res.upgrade(req) && url.pathname === "/ws/realtime") {
         return new Response(null, { status: 101 });
-      } 
-      if(url.pathname.startsWith('/files')) {
-        var  collection = url.pathname.split("/files/")[1].split("/")[0];
-        var  f  = url.pathname.split(collection + "/")[1]; 
-        if(!fs.existsSync(process.cwd() + `/uploads/${collection}/${f}`)) {
+      }
+      if (url.pathname.startsWith("/files")) {
+        var collection = url.pathname.split("/files/")[1].split("/")[0];
+        var f = url.pathname.split(collection + "/")[1];
+        if (!fs.existsSync(process.cwd() + `/uploads/${collection}/${f}`)) {
           return new Response("404 Not Found", {
             status: responseCodes.notfound,
           });
-        }  
-        let fileStream = fs.readFileSync(process.cwd() + `/uploads/${collection}/${f}`)
+        }
+        let fileStream = fs.readFileSync(
+          process.cwd() + `/uploads/${collection}/${f}`
+        );
         let headers = {
-          "Content-Type":  await file(process.cwd() + `/uploads/${collection}/${f}`).type, 
+          "Content-Type": await file(
+            process.cwd() + `/uploads/${collection}/${f}`
+          ).type,
           "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+          "Access-Control-Allow-Headers":
+            "Authorization-Session, content-type, Authorization",
           "Content-Encoding": "gzip",
-        }; 
+        };
         let stats = fs.statSync(process.cwd() + `/uploads/${collection}/${f}`);
-        headers["Content-Length"] = stats.size; 
+        headers["Content-Length"] = stats.size;
         return new Response(Bun.gzipSync(fileStream), {
           status: responseCodes.ok,
           headers: headers,
         });
-      }  
+      }
+
+      if (url.pathname.startsWith("/replicate")) {
+        let secret = req.headers.get("Authorization").split("Bearer ")[1];
+        // we need to save the server api url so we can ping when we need to resync
+        let server = req.headers.get("NODE_ENDPOINT");
+        if (!CacheNodes.find((node) => node === server)) {
+          CacheNodes.push(server);
+        }
+        if (!secret) {
+          return new Response("401 Unauthorized", {
+            status: responseCodes.unauthorized,
+          });
+        }
+        if (secret !== process.env.REPLICATION_SECRET) {
+          return new Response("401 Unauthorized", {
+            status: responseCodes.unauthorized,
+          });
+        }
+        if (!server) {
+          return new Response("400 Bad Request", {
+            status: responseCodes.badrequest,
+          });
+        }
+        let lastSyncTime = new Date(req.headers.get("Last-Sync-Time")); // Get the last synchronization time from the request headers as a Date object
+
+        let data = [];
+
+        for (var i in xavier) {
+          if (i === "sync" || i === "jwt") continue;
+          let collection = xavier[i];
+          let docs = await collection.getAll();
+
+          // Filter documents based on last sync time
+          let updatedDocs = docs.filter((doc) => {
+            return doc.created_at > lastSyncTime; // Assuming doc.created_at is the Date field indicating when the document was created
+          });
+
+          data.push({ name: i, docs: updatedDocs });
+        }
+
+        return new Response(JSON.stringify(data, null, 2), {
+          status: responseCodes.ok,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers":
+              "Authorization-Session, content-type, Authorization",
+            "Last-Sync-Time": new Date().toISOString(), // Update the Last-Sync-Time header with the current time
+          },
+        });
+      }
 
       // if bucket doesnt include token, add it
-      if (req.headers.get("Authorization-Session") && !rateLimitBucket.find((bucket) => bucket.token === req.headers.get("Authorization-Session"))) {
-        rateLimitBucket.push({token: req.headers.get("Authorization-Session"), time: Date.now(), lastTime: Date.now(), uses: 0}); 
-        console.log(`Added token ${req.headers.get("Authorization-Session").slice(0, 5)} to bucket`);
+      if (
+        req.headers.get("Authorization-Session") &&
+        !rateLimitBucket.find(
+          (bucket) => bucket.token === req.headers.get("Authorization-Session")
+        )
+      ) {
+        rateLimitBucket.push({
+          token: req.headers.get("Authorization-Session"),
+          time: Date.now(),
+          lastTime: Date.now(),
+          uses: 0,
+        });
+        console.log(
+          `Added token ${req.headers
+            .get("Authorization-Session")
+            .slice(0, 5)} to bucket`
+        );
       }
       try {
-        if(process.env.RATELIMITS_ENABLED && url.pathname === "/auth/session") {
-          if(req.method.toLowerCase() === "options") {
+        if (
+          process.env.RATELIMITS_ENABLED &&
+          url.pathname === "/auth/session"
+        ) {
+          if (req.method.toLowerCase() === "options") {
             return new Response(null, {
               status: responseCodes.ok,
               headers: {
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+                "Access-Control-Allow-Headers":
+                  "Authorization-Session, content-type, Authorization",
               },
             });
           }
-          let token = jwt.sign({ id: Math.random() }, process.env.TOKEN_SECRET || "secret", { expiresIn: "1h" });
-          rateLimitBucket.push({token, time: Date.now(), lastTime: Date.now(), uses: 0});
+          let token = jwt.sign(
+            { id: Math.random() },
+            process.env.TOKEN_SECRET || "secret",
+            { expiresIn: "1h" }
+          );
+          rateLimitBucket.push({
+            token,
+            time: Date.now(),
+            lastTime: Date.now(),
+            uses: 0,
+          });
           return new Response(token, {
             status: responseCodes.ok,
-            headers: { 
+            headers: {
               "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+              "Access-Control-Allow-Headers":
+                "Authorization-Session, content-type, Authorization",
             },
           });
         }
-        if(process.env.RATELIMITS_ENABLED && !req.headers.get("Authorization-Session")) {
-          if(req.method.toLowerCase() === "options") {
+        if (
+          process.env.RATELIMITS_ENABLED &&
+          !req.headers.get("Authorization-Session")
+        ) {
+          if (req.method.toLowerCase() === "options") {
             return new Response(null, {
               status: responseCodes.ok,
               headers: {
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+                "Access-Control-Allow-Headers":
+                  "Authorization-Session, content-type, Authorization",
               },
             });
-          } 
+          }
           return new Response(JSON.stringify({ message: "Unauthorized" }), {
             status: responseCodes.unauthorized,
             headers: {
-              "Content-Type":  "application/json",
+              "Content-Type": "application/json",
               "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
-            }
+              "Access-Control-Allow-Headers":
+                "Authorization-Session, content-type, Authorization",
+            },
           });
         }
-        if(process.env.RATELIMITS_ENABLED ) {
-          function Res(){
+        if (process.env.RATELIMITS_ENABLED) {
+          function Res() {
             return new Response(JSON.stringify({ message: "Unauthorized" }), {
               status: responseCodes.unauthorized,
               headers: {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+                "Access-Control-Allow-Headers":
+                  "Authorization-Session, content-type, Authorization",
               },
             });
           }
-           try {
-            jwt.verify(req.headers.get("Authorization-Session"), process.env.TOKEN_SECRET || "secret")
-           } catch (error) {
+          try {
+            jwt.verify(
+              req.headers.get("Authorization-Session"),
+              process.env.TOKEN_SECRET || "secret"
+            );
+          } catch (error) {
             return Res();
-           }
-          let verified = jwt.verify(req.headers.get("Authorization-Session"), process.env.TOKEN_SECRET || "secret");
-          let exp = verified.exp;
-           
-          if (Date.now() >= exp * 1000) {
-            return  Res();
           }
-          if(!verified) {
-            return  Res();
-          } 
-        }  
+          let verified = jwt.verify(
+            req.headers.get("Authorization-Session"),
+            process.env.TOKEN_SECRET || "secret"
+          );
+          let exp = verified.exp;
+
+          if (Date.now() >= exp * 1000) {
+            return Res();
+          }
+          if (!verified) {
+            return Res();
+          }
+        }
         let token = req.headers.get("Authorization-Session") || "";
-        let bucket = rateLimitBucket.find((bucket) => bucket.token.toString() === token) || 0; 
+        let bucket =
+          rateLimitBucket.find((bucket) => bucket.token.toString() === token) ||
+          0;
         if (process.env.RATELIMITS_ENABLED) {
           if (bucket === 0) {
-            console.log("Bucket not found"); 
-            rateLimitBucket.push({token, time: Date.now(), lastTime: Date.now(), uses: 0});
-          }else{
-            if (bucket.uses >= (parseInt(process.env.RATELIMITS_MAX_REQUESTS) || 100)) { 
+            console.log("Bucket not found");
+            rateLimitBucket.push({
+              token,
+              time: Date.now(),
+              lastTime: Date.now(),
+              uses: 0,
+            });
+          } else {
+            if (
+              bucket.uses >=
+              (parseInt(process.env.RATELIMITS_MAX_REQUESTS) || 100)
+            ) {
               if (req.method.toLowerCase() === "options") {
                 return new Response(null, {
                   status: responseCodes.ok,
                   headers: {
                     "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
+                    "Access-Control-Allow-Headers":
+                      "Authorization-Session, content-type, Authorization",
                   },
                 });
               }
-              return new Response(JSON.stringify({ message: "Too many requests" }), {
-                status: responseCodes.tooManyRequests,
-                headers: {
-                  "Content-Type": "application/json",
-                  "Access-Control-Allow-Origin": "*",
-                  "Access-Control-Allow-Headers": "Authorization-Session, content-type, Authorization",
-                },
-              }); 
+              return new Response(
+                JSON.stringify({ message: "Too many requests" }),
+                {
+                  status: responseCodes.tooManyRequests,
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers":
+                      "Authorization-Session, content-type, Authorization",
+                  },
+                }
+              );
             }
           }
-         
-        } 
+        }
         if (bucket) {
           bucket.uses += 1;
           bucket.lastTime = Date.now();
@@ -604,7 +851,7 @@ if(args.includes("--serve")) {
             return b;
           });
         }
-      } catch (error) { 
+      } catch (error) {
         return new Response("500 Internal Server Error", {
           status: responseCodes.internalservererror,
           headers: {
@@ -615,17 +862,23 @@ if(args.includes("--serve")) {
       }
 
       let path = url.pathname;
-      let route = routes.match(path); 
-   
-      try { 
-        if (route) { 
+      let route = routes.match(path);
+
+      try {
+        if (route) {
           let mod = await import(route.filePath);
           let requestSize = req.headers.get("content-length");
-          if (requestSize && process.env.HTTP_MAX_REQUEST_SIZE){
-            if (parseInt(requestSize) >=  parseInt(process.env.HTTP_MAX_REQUEST_SIZE)) {
-              return new Response(`Request size exceeded ${process.env.HTTP_MAX_REQUEST_SIZE} bytes`, {
-                status: responseCodes.payloadtoolarge,
-              });
+          if (requestSize && process.env.HTTP_MAX_REQUEST_SIZE) {
+            if (
+              parseInt(requestSize) >=
+              parseInt(process.env.HTTP_MAX_REQUEST_SIZE)
+            ) {
+              return new Response(
+                `Request size exceeded ${process.env.HTTP_MAX_REQUEST_SIZE} bytes`,
+                {
+                  status: responseCodes.payloadtoolarge,
+                }
+              );
             }
           }
           if (!mod.default) {
@@ -634,37 +887,69 @@ if(args.includes("--serve")) {
             });
           }
           let name = mod.default.name.toLowerCase();
-          if (name === "options") { 
-            return mod.default(req);
+          try{ 
+            if (name === "options") {
+              return mod.default(req);
+            }
+  
+          } catch (error) {
+            return new Response("405 Method Not Allowed", {
+              status: responseCodes.methodnotallowed,
+              headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers":
+                  "Authorization, content-type, Authorization-Session",
+              },
+            });
           }
-           
           if (req.method.toLowerCase() === "options") {
             return new Response(null, {
               status: responseCodes.ok,
-              headers: { 
-                "Access-Control-Allow-Origin": "*" ,
-                "Access-Control-Allow-Headers": "Authorization, content-type, Authorization-Session",
+              headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers":
+                  "Authorization, content-type, Authorization-Session",
               },
             });
           }
           if (req.method.toLowerCase() !== mod.default.name.toLowerCase()) {
             return new Response("405 Method Not Allowed", {
               status: responseCodes.methodnotallowed,
-              headers: { "Access-Control-Allow-Origin": "*", 
-              "Access-Control-Allow-Headers": "Authorization, content-type, Authorization-Session",},
+              headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers":
+                  "Authorization, content-type, Authorization-Session",
+              },
             });
           }
           req.params = route.params || {};
           req.query = Object.fromEntries(url.searchParams.entries());
-          let response = await mod.default(req);
-          return response;
+           try {
+            let response = await mod.default(req);
+            return response;
+           } catch (error) {
+            if (process.env.LOG_LEVEL?.toLocaleLowerCase() === "error") {
+              console.error(error);
+              throw new Error(error);
+            }
+            return new Response("500 Internal Server Error", {
+              status: responseCodes.internalservererror,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers":
+                  "Authorization, content-type, Authorization-Session",
+              },
+            });
+           }
         } else {
           return new Response("404 Not Found", {
             status: responseCodes.notfound,
             headers: {
               "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*", 
-              "Access-Control-Allow-Headers": "Authorization, content-type, Authorization-Session",
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Headers":
+                "Authorization, content-type, Authorization-Session",
             },
           });
         }
@@ -677,56 +962,62 @@ if(args.includes("--serve")) {
           status: responseCodes.internalservererror,
           headers: {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*", 
-            "Access-Control-Allow-Headers": "Authorization, content-type, Authorization-Session",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers":
+              "Authorization, content-type, Authorization-Session",
           },
         });
       }
-  }})
-  console.log(`
-🚀 Api running @ ${ansiColors.blue(`http://localhost:${process.env.HTTP_REQUEST_PORT}`)}
+    },
+  });
+  console.log(
+    `
+🚀 Api running @ ${ansiColors.blue(
+      `${process.env.HTTPS_ENABLED ? "https" : "http"}://localhost:${process.env.HTTP_REQUEST_PORT}`
+    )}
 Websocket running @ ws://localhost:${process.env.HTTP_REQUEST_PORT}/ws/realtime
 
 Listening to : ${Object.keys(routes.routes).join(", ")}
    
 ${ansiColors.green("✨ Server started successfully ✨")}
 Press Ctrl + C to stop the server
-`.trim());
-globalThis.serverRunning = true;
-  
+`.trim()
+  );
+  globalThis.serverRunning = true;
 }
-process.on("unhandledRejection", (reason, promise) => { 
-  xavier.sync()
+process.on("unhandledRejection", (reason, promise) => {
+  xavier.sync();
   console.error(reason);
   process.exit(1);
 });
 
 process.on("uncaughtException", (error) => {
-  console.error(error); 
-  xavier.sync()
+  console.error(error);
+  xavier.sync();
   process.exit(1);
 });
 
 process.on("SIGINT", () => {
-  console.log("Server stopped"); 
-  xavier.sync()
+  console.log("Server stopped");
+  xavier.sync();
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
   console.log("Server stopped");
-  xavier.sync()
+  xavier.sync();
   process.exit(0);
-}); 
- 
-if(!globalThis.serverRunning) {
-  console.log(`
+});
+
+if (!globalThis.serverRunning) {
+  console.log(
+    `
 --help - Show help
 --help-env - Show an example of used environment variables
 --version - Show version
 --init - Initialize the project
 --serve - Start the server
-  `.trim());
-process.exit(0);
-
+  `.trim()
+  );
+  process.exit(0);
 }

@@ -1,0 +1,9 @@
+@import com.dbf.utils.hashing.HashingUtils;
+export {
+    functions {
+        hashPassword(password String! & Length(min: 8, max: 100)) {
+
+           return HashingUtils.hashPassword(password);
+        }
+    }
+}

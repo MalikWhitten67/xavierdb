@@ -6,18 +6,30 @@ var Bun = globalThis.Bun;
 class CRUD {
   private db: Database;
   private token_Store: any[];
-  private schemas: any[];
+  private deepCounter: number;
+  private schemas: any[
+    {
+      name: string,
+      fields: Object,
+      required:string[],
+      auth:boolean,
+      relations:any[]
+    }
+  ];
   constructor() {
-    this.db = new Database(":memory:");
-    this.db.exec("PRAGMA journal_mode = WAL;") // WAL = write-ahead logging
+   this.db = new Database(":memory:"); 
    setTimeout(() => {
     this.syncWithDisk();
    }, 0);
     this.schemas = [];
     this.token_Store = [];
+    this.events = [];
+    this.cache = new Map();
     setInterval(() => {
       this.sync();
     }, 1000 * 60 * 5); // 5 minutes
+    this.deepCounter = 0;
+    this.currentlyProccessing = ""
   }
 
    
@@ -40,32 +52,17 @@ class CRUD {
     if (!fs.existsSync(target)) {
       return;
     }
-    const dbt = new Database(target); 
-    dbt.prepare("ATTACH DATABASE ':memory:' AS memory").run() // Attach the in-memory database
-    dbt.exec("PRAGMA journal_mode = WAL") 
+    const dbt = new Database(target);  
     this.SyncData(dbt, this.db);
   }
 
-  private async SyncData(copy: Database, target: Database){
-    const tables = copy.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    
+   
+  private async SyncData(copy: Database, target: Database){ 
     // remove tables that are not in the schema
     const targetTables = target.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    for (const table of targetTables) {
-        if (!tables.find((t) => t.name === table.name)) {
-          console.log(`Dropping table ${table.name}`);
-            target.prepare(`DROP TABLE ${table.name}`).run();
-        }
-    } 
-    for (const table of tables) {
-        const targetFields = target.prepare(`PRAGMA table_info(${table.name})`).all();
-        const copyFields = copy.prepare(`PRAGMA table_info(${table.name})`).all();
-        for (const field of targetFields) {
-            if (!copyFields.find((f) => f.name === field.name)) {
-                target.prepare(`ALTER TABLE ${table.name} DROP COLUMN ${field.name}`).run();
-            }
-        }
-    }
+    const schemaTables = this.schemas.map((schema) => schema.name); 
+    const tables = copy.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+     
     for (const tableObj of tables) {
         const table = tableObj.name;
         const fields = copy.prepare(`PRAGMA table_info(${table})`).all();
@@ -113,7 +110,7 @@ class CRUD {
             // Remove columns that are not in the schema
             const targetFields = target.prepare(`PRAGMA table_info(${table})`).all();
             for (const field of targetFields) {
-                if (!schema.fields.hasOwnProperty(field.name)) {
+                if (!schema.fields.hasOwnProperty(field.name)) { 
                     target.prepare(`ALTER TABLE ${table} DROP COLUMN ${field.name}`).run();
                 }
             }
@@ -125,6 +122,8 @@ class CRUD {
                     target.prepare(`ALTER TABLE ${table} ADD COLUMN ${fieldName} ${schema.fields[fieldName]}`).run();
                 }
             }
+
+            
         }
     }
 }
@@ -179,8 +178,8 @@ class CRUD {
         fields: data.fields,
         auth: data.auth || false,
         relations: data.relations || null,
-      },
-
+      }, 
+      events: [],
       ...this.collection(data.name),
     };
   }
@@ -189,7 +188,8 @@ class CRUD {
     let logs = fs.createWriteStream(process.cwd() + "/data/logs.txt", {
       flags: "a",
     });
-    logs.write(`${new Date().toISOString()} - ${error}\n`);
+    logs.write(`${new Date().toISOString()} - ${error}
+`);
   }
 
    jwt = {
@@ -208,9 +208,77 @@ class CRUD {
       return jwt.sign(data, process.env.TOKEN_SECRET, {expiresIn: process.env.TOKEN_EXPIRY || "1h"});
     } 
   }
+
+  recursiveRelations(data: any, collection: any, colname: string, visited?: Set<string> = new Set()) {
+    if (visited.has(colname)) { 
+        return data;
+    }
+
+    if (this.deepCounter > 3) { 
+        return data;
+    }
+
+    visited.add(colname);
+
+    for (const r in collection) {
+        if (r === "name" || r === "auth") { 
+          continue;
+        }
+      
+        const relation = collection[r];
+        try {
+          data[relation.using] = JSON.parse(data[relation.using]);
+        }
+        catch (e) {
+           
+        }
+
+        const relatedCollection = this.schemas.find((schema) => schema.name === relation.relatedCollection);
+
+        if (!relatedCollection) continue;
+
+        this.deepCounter++;
+        const cacheKey = `${colname}_${relation.relatedCollection}_${data[relation.using]}`;
+        let relatedData = null;
+
+        if (!relatedData) { 
+            relatedData = this.collection(relation.relatedCollection).findOne(data[relation.using]); 
+        }
+ 
+        this.deepCounter--;
+
+        if (Array.isArray(data[relation.using])) {
+            const related = data[relation.using].map((id: string) => { 
+                return this.collection(relation.relatedCollection).findOne(id);
+            });
+            if (!data.expand) data.expand = {};
+            data.expand[relation.using] = related;
+        } else {
+            if (data[relation.using]) { 
+                data.expand = { ...data.expand, [relation.using]: relatedData };
+            }
+        }
+    }
+
+    visited.delete(colname);
+
+    return data;
+}
+
+
+
   
   collection(name: string) { 
+    const schema = this.schemas.find((schema) => schema.name === name);
+
+    if (!schema) {
+        return {
+            error: "Collection not found"
+        };
+    }
+
     return {
+        fields: schema.fields,
       name: name, 
        auth:{
         isValid: async (token: string) => {
@@ -220,18 +288,17 @@ class CRUD {
           return jwt.decode(token);
         },
       }, 
-      findOne: (id: string) => {
-        let schema = this.schemas.find((schema) => schema.name === name);   
+      findOne: (id: string) => {  
+        if(!this.schemas.find((schema) => schema.name === name)) return {error: "Collection not found"};
+        let schema = this.schemas.find((schema) => schema.name === name);    
+        if(!id || id.includes("[") || id.includes("{"))  { 
+          return null;
+        };
         let data  = this.db.prepare(`SELECT * FROM ${name} WHERE id = "${id}"`).get() as any; 
-         
+        if(!data) return null;
          if(data){
-          if(schema.relations){
-            for(var r in schema.relations){
-              let relation = schema.relations[r];
-              let collection = this.collection(relation.relatedCollection);
-              let related = collection.findOne(data[relation.using]);
-              data[relation.relatedCollection] = related;
-            }
+          if(schema.relations){  
+            data = this.recursiveRelations(data, schema.relations, name);
           }
           if(schema.auth){
             if(data.hasOwnProperty("password")) delete data.password;
@@ -247,6 +314,14 @@ class CRUD {
         if(!data) return {error: "Record not found"};  
         return data.password;
       },
+      on(event: string, callback: Function) {
+    if (event === "error") {
+      process.on("uncaughtException", (error) => {
+        callback(error);
+      });
+    }  
+    this.events.push({ event, callback });
+  },
       insertOne: async (data: any) => {
         data["id"] = data["id"] || crypto.randomUUID();
         data["created_at"] = data["created_at"] || new Date().toISOString();
@@ -280,11 +355,12 @@ class CRUD {
             data[df] = "0"
           }
         }
+      
         const keys = Object.keys(data);
         const values = Object.values(data);
         const valuesString = values.map((value) => {
           if(value === null) return "NULL";
-          if(typeof value === "object") return JSON.stringify(value);
+          if(typeof value === "object") return JSON.stringify(value); 
           if(value === undefined) return "NULL";
           return typeof value === "string" ? `'${value}'` : value;
         }); 
@@ -310,6 +386,21 @@ class CRUD {
         setTimeout(() => {
           this.sync()
         },  1000);
+        this.events.forEach((event) => {
+          if (event.event === "change") {
+            event.callback(d);
+          }
+        });
+        Object.keys(d).forEach((key) => {
+          if (typeof d[key] === "string") {
+            try {
+              d[key] = JSON.parse(d[key]);
+            } catch (e) {}
+          }
+        })  
+        if(schema.relations){
+          d = this.recursiveRelations(d, schema.relations, name);
+        }
         return d;
       },
        
@@ -325,7 +416,7 @@ class CRUD {
         if(EmailOrUsername.includes("@")){
           const verifyEmail = (email: string) => {
             let isVerified = email.match(
-              /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/
+              /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,6}$/
             )
               ? true
               : false;
@@ -334,8 +425,7 @@ class CRUD {
           
           !verifyEmail(EmailOrUsername) ? { error: "Invalid email" } : null;
         }
-
-        console.log(this.collection(name).getAll());
+ 
    
         let user = this.db.prepare(`SELECT * FROM ${name} WHERE ${isEmail ? "email" : "username"} = "${EmailOrUsername}"`).get();
         if(!user) return {error: "User not found"};
@@ -368,69 +458,97 @@ class CRUD {
      
     
       
-      match: (query: Object, options: {sort: 'asc' | 'desc', limit: number }) => { 
-        const conditions: any[] = []; 
-        let schema = this.schemas.find((schema) => schema.name === name);
-        const params: any[] = [];
-        query = query || {};
-        for (const key in query) {
-          if (Object.hasOwnProperty.call(query, key)) {
-            if (key.includes("_includes")) { 
-              var fieldName: string = key.replace("_includes", "") as string;
-              conditions.push(`${fieldName} LIKE ?`);
-              params.push(`%${query[key]}%`);
-            } else {
-              conditions.push(`${key} = ?`);
-              params.push(query[key]);
+      match: (query: Object, options: { sort: 'asc' | 'desc', limit: number }) => {
+      const conditions: any[] = [];
+      let schema = this.schemas.find((schema) => schema.name === name);
+      const params: any[] = [];
+      query = query || {}; 
+      query = query.where;
+      for (var q in query) {
+         let value = query[q];
+         if(value.hasOwnProperty("contains")){ 
+            let contains = value.contains;
+            if(typeof contains === "object"){
+              for(var c in contains){
+                conditions.push(`${q} LIKE ?`);
+                params.push(`%${contains[c]}%`);
+              }
             }
+            conditions.push(`${q} LIKE ?`);
+            params.push(`%${contains}%`);
+         } 
+         if(value.hasOwnProperty("equals")){
+            conditions.push(`${q} = ?`);
+            params.push(value.equals);
+         }
+          if(value.hasOwnProperty("greaterThan")){
+            conditions.push(`${q} > ?`);
+            params.push(value.greaterThan);
           }
-        } 
-        var where = conditions.join(" AND "); 
-        if(where === "") where = "1 = 1";
-        let queryString = `SELECT * FROM ${name} WHERE ${where}`; 
-        let dt =  this.db.prepare(queryString).all(params).filter((d) => { return d; }); 
-        if(schema.relations){
-          for(var r in schema.relations){
-            let relation = schema.relations[r];
-            let collection = this.collection(relation.relatedCollection);
-            for(var d in dt){
-              let related = collection.findOne(dt[d][relation.using]);
-              dt[d][relation.collection] = related;
-            }
+          if(value.hasOwnProperty("lessThan")){ 
+            conditions.push(`${q} < ?`);
+            params.push(value.lessThan);
           }
-        }
-        if(options && options.hasOwnProperty("sort")){
-          let sort = options["sort"];
-          dt = dt.sort((a, b) => {
-            if(sort === "asc"){
-              return new Date(a.created_at) - new Date(b.created_at);
-            }else{
-              return new Date(b.created_at) - new Date(a.created_at);
-            }
-          });
-        }
-        if(options && options.hasOwnProperty("limit")){
-          let limit = options["limit"];
-          dt = dt.slice(0, limit);
-        } 
-        if(schema.auth){
-          dt = dt.filter((d) => d.emailVisible);
-          dt = dt.map((d) => { delete d.email; return d; });
-          dt = dt.map((d) => { delete d.password; return d; });
-        }
-        if(schema.relations){
-            for(var r in schema.relations){
-                let relation = schema.relations[r];
-                let collection = this.collection(relation.relatedCollection);
-                for(var d in dt){
-                let related = collection.findOne(dt[d][relation.using]);
-                dt[d][relation.collection] = related;
-             }
-            }
-        }
+          if(value.hasOwnProperty("greaterThanOrEquals")){ 
+            let value = value.greaterThanOrEquals;
+            conditions.push(`${q} >= ?`);
+            params.push(value);
+          }
+          if(value.hasOwnProperty("lessThanOrEquals")){  
+            conditions.push(`${q} <= ?`);
+            params.push(value.lessThanOrEquals);
+          }
+          if(value.hasOwnProperty("in")){
+            conditions.push(`${q} IN (${value.in.map((v) => "?").join(", ")})`);
+            params.push(...value.in);
+          }
+          if(value.hasOwnProperty("notIn")){
+            conditions.push(`${q} NOT IN (${value.notIn.map((v) => "?").join(", ")})`);
+            params.push(...value.notIn);
+          }
+          if(value.hasOwnProperty("notEquals")){
+            conditions.push(`${q} != ?`);
+            params.push(value.notEquals);
+          }
+          if(value.hasOwnProperty("notContains")){
+            if(typeof value.notContains === "object"){
+              for(var c in value.notContains){
+                conditions.push(`${q} NOT LIKE ?`);
+                params.push(`%${value.notContains[c]}%`);
+              } 
+              conditions.push(`${q} NOT LIKE ?`);
+              params.push(`%${value.notContains}%`);
+          }
 
-        return dt || [];
-      },
+      }
+       
+      }
+      var where = conditions.join(" AND ");
+      if (where === "") where = "1 = 1";
+      let queryString = `SELECT * FROM ${name} ${where === "1 = 1" ? "" : "WHERE " + where} ORDER BY created_at ${options.sort} LIMIT ${options.limit}`;
+      let dt = this.db.prepare(queryString).all(params);
+  
+      dt = dt.map((d) => { 
+        Object.keys(d).forEach((key) => {
+          if (typeof d[key] === "string") {
+            try {
+              d[key] = JSON.parse(d[key]);
+            } catch (e) {}
+          }
+        })  
+        if(schema.relations){ 
+          d = this.recursiveRelations(d, schema.relations, name);
+        }
+        
+        if(schema.auth){
+          if(!d.emailVisible) delete d.email;
+          delete d.password;
+        }
+        return d;
+      }); 
+      return dt || [];
+     },
+  
       /**
        * Get all records in the collection
        */
@@ -443,16 +561,33 @@ class CRUD {
           data = data.map((d) => { delete d.email; return d; });
           data = data.map((d) => { delete d.password; return d; });
         }
-        if(schema.relations.length > 0){ 
-          for(var r in schema.relations){ 
-            let relation = schema.relations[r];
-            let collection = this.collection(relation.relatedCollection);
-            for(var d in data){
-              let related = collection.findOne(data[d][relation.using]);
-              data[d][relation.relatedCollection] = related;
-            }
+        if (schema.relations) {
+          for (var r in schema.relations) {
+              let relation = schema.relations[r];
+              let collection = this.collection(relation.relatedCollection);
+              dt = dt.map((d) => {
+                  try {
+                      d[relation.using] = JSON.parse(d[relation.using]);
+                  } catch (e) {}
+                  if (Array.isArray(d[relation.using])) {
+                      let related = [];
+                      for (var u in d[relation.using]) {
+                          related.push(collection.findOne(d[relation.using][u]));
+                      } 
+                      if (!d.expand) d.expand = {};
+                      d.expand = { ...d.expand, [relation.relatedCollection]: related };
+                  } else {
+                      if (d[relation.using]) {
+                          let related = collection.findOne(d[relation.using]);  
+                          if(!related) return d;
+                          if (!d.expand) d.expand = {};
+                          d.expand = { ...d.expand, [relation.using]: related }; // Push related data as object
+                      }
+                  }
+                  return d;
+              });
           }
-        }
+      }
         return data;
       },
       delete: (id: string) => { 
@@ -469,6 +604,11 @@ class CRUD {
               data: { id },
             })
           );
+        });
+         this.events.forEach((event) => {
+          if (event.event === "change") {
+            event.callback(d);
+          }
         });
         return { id };
       }, 
@@ -487,18 +627,17 @@ class CRUD {
  
         const set = keys
           .map((key, index) => {
+            if(valuesString[index].includes("[") || valuesString[index].includes("{")){
+              return `${key} = '${valuesString[index]}'`;
+            }
             return `${key} = ${valuesString[index]}`;
           })
           .join(", ");
  
         let record = this.db.prepare(`SELECT * FROM ${name} WHERE id = "${id}"`).get();
-        if(!record) return {error: "Record not found"};
-         
+        if(!record) return {error: "Record not found"};   
         this.db.prepare(`UPDATE ${name} SET ${set} WHERE id = "${id}"`).run();
-        let d = this.db
-          .prepare(`SELECT * FROM ${name} WHERE id = "${id}"`)
-          .get();
-
+        let d = this.db.prepare(`SELECT * FROM ${name} WHERE id = "${id}"`).get();
         globalThis.wssClients.forEach((client) => {
           client.send(
             JSON.stringify({
@@ -512,15 +651,15 @@ class CRUD {
           delete d.password;
           delete d.email;
         }
-        if(schema.relations){
-          for(var r in schema.relations){
-            let relation = schema.relations[r];
-            let collection = this.collection(relation.relatedCollection);
-            let related = collection.findOne(d[relation.using]);
-            d[relation.relatedCollection] = related;
-          }
+        if(schema.relations){ 
+          d = this.recursiveRelations(d, schema.relations, name);
         }
         this.sync();
+       this.events.forEach((event) => {
+          if (event.event === "change") {
+            event.callback(d);
+          }
+        });
         return d;
       },
       
@@ -536,14 +675,9 @@ class CRUD {
             delete record.password;
             delete record.email;
           }
-          if(schema.relations){
-            for(var r in schema.relations){
-              let relation = schema.relations[r];
-              let collection = this.collection(relation.relatedCollection);
-              let related = collection.findOne(record[relation.using]);
-              record[relation.relatedCollection] = related;
-            }
-          }
+          if (schema.relations) {
+            record = this.recursiveRelations(record, schema.relations);
+           }
           const keys = Object.keys(data);
           const values = Object.values(data);
           const valuesString = values.map((value) => {
@@ -569,6 +703,11 @@ class CRUD {
             })
           );
         });
+         this.events.forEach((event) => {
+          if (event.event === "change") {
+            event.callback(d);
+          }
+        });
         return d;
       },
 
@@ -589,21 +728,16 @@ class CRUD {
             })
           );
         });
+       this.events.forEach((event) => {
+          if (event.event === "change") {
+            event.callback(d);
+          }
+        });
         return true;
       },    
 
-      count: (query: any) => {
-        let schema = this.schemas.find((schema) => schema.name === name);
-        let conditions: any[] = [];
-        let params: any[] = [];
-        for(var q in query){
-          conditions.push(`${q} = ?`);
-          params.push(query[q]);
-        }
-        let where = conditions.join(" AND ");
-        if(where === "") where = "1 = 1";
-        let count = this.db.prepare(`SELECT COUNT(*) as count FROM ${name} WHERE ${where}`).get(params).count;
-        return count;
+      count: () => {   
+        return this.db.prepare(`SELECT count(*) as count FROM ${name}`).get().count;
       },
     };
   }

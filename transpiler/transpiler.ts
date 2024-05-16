@@ -94,12 +94,7 @@ async function transpile(file: string) {
 
         let end = i + 1;
         end = end - 1;
-        let relation = contents.slice(start, end);
-        let relationCount = relation.split("->").length - 1;
-        let commaCount = relation.split(",").length - 1;
-        if (relationCount !== commaCount) {
-          throw new Error("Expected a comma after a relation");
-        }
+        let relation = contents.slice(start, end); 
         let relationsArr = relation.split(",");
         relationsArr = relationsArr.filter((rel) => rel !== " " && rel !== ""); 
         for (var r in relationsArr) {
@@ -121,6 +116,9 @@ async function transpile(file: string) {
           if (!relations[collection]) {
             relations[collection] = {};
           } 
+          // split & 
+          let relatedValueArr = relatedValue.split("&");
+          relatedValue = relatedValueArr.map((value) => value.replace(" ", ""));
           relations.push({
             [collection]: {
               using,
