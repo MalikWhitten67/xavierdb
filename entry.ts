@@ -9,46 +9,10 @@ import crud from "./ext/crud.txt";
 import Bun from "bun";
 import ansiColors from "ansi-colors";
 import "./transpiler/transpiler";
-
-globalThis.optimizeMemory = function () {
-  // Optimize memory
-  console.log("Optimizing memory");
-  // Add memory optimization code here
-  
-}
-globalThis.optimizeCPU = function () {
-  // Optimize CPU
-  console.log("Optimizing CPU");
-  // Add CPU optimization code here
-
-}
 /**
  * @description CacheNodes are xavier next clients that are used to cache data from the server
  */
-const CacheNodes = []; 
-globalThis.pingCacheNodes = async function () {
-  if (amountOfUpdates > pingThreshold && CacheNodes.length > 0) {
-    CacheNodes.forEach(async (node) => {
-      try {
-        let res = await fetch(node + "/ping", {
-          method: "GET",
-          headers: {
-            "x-secret": process.env.REPLICATION_SECRET,
-          },
-        });
-        if (res.status === 200) {
-          console.log(`Pinged ${node} successfully`);
-        }
-      } catch (error) {
-        console.error(`Failed to ping ${node}`);
-      }
-    });
-    amountOfUpdates = 0; // Reset the count after pinging
-  } else {
-    amountOfUpdates++; // Increment the count
-  }
-};
-
+ 
 if (!fs.existsSync(process.cwd() + "/node_modules/xavierdb/crud/index.ts")) {
   fs.mkdirSync(process.cwd() + "/node_modules/xavierdb/crud", {
     recursive: true,
@@ -78,6 +42,102 @@ if (!fs.existsSync(process.cwd() + "/node_modules/xavierdb/crud/index.ts")) {
   `
   );
 }
+let args = process.argv.slice(2);
+if(!fs.existsSync(process.cwd() + "/schema.cbf") && !args[0] || !fs.existsSync(process.cwd() + "/schema.cbf") && !args[0].startsWith("--init")){
+  throw new Error("Please run xavier --init")
+}
+ 
+if (!fs.existsSync(process.cwd() + "/data")) {
+  fs.mkdirSync(process.cwd() + "/data");
+}
+if (!fs.existsSync(process.cwd() + "/data/db.sqlite")) {
+  fs.writeFileSync(process.cwd() + "/data/db.sqlite", "");
+}
+if (!fs.existsSync(process.cwd() + "/node_modules")) {
+  fs.mkdirSync(process.cwd() + "/node_modules");
+}
+if (!fs.existsSync(process.cwd() + "/logs")) {
+  fs.mkdirSync(process.cwd() + "/logs");
+}
+if (args[0] && args[0].startsWith("--help")) {
+  switch (true) {
+    case args.includes("--help-env"):
+      console.log(
+        `
+Environment Variables
+------
+${env_example}
+   `.trim()
+      );
+  }
+  console.log(
+    `\n
+--help - Show help
+--help-env - Show environment variables
+--version - Show version
+--init - Initialize the project
+--serve - Start the server
+  `.trim()
+  );
+  process.exit(0);
+}
+if (args.includes("--version")) {
+  console.log(
+    `
+Xavier v1.0.0
+Codename: Xenofon
+`.trim()
+  );
+  process.exit(0);
+}
+
+if (args.includes("--init")) {
+  if (fs.existsSync(process.cwd() + "/routes")) {
+    console.error("Project already initialized");
+    process.exit(1);
+  }
+  if (!fs.existsSync(process.cwd() + "/uploads")) {
+    fs.mkdirSync(process.cwd() + "/uploads");
+  }
+  if (!fs.existsSync(process.cwd() + "/config.ts")) {
+    fs.writeFileSync(
+      process.cwd() + "/schema.cbf",
+      `
+    collection users {
+      name: text & required,
+      email: text  & required,
+    }
+    end;
+    `.trim()
+    );
+  }
+  if (!fs.existsSync(process.cwd() + "/routes")) {
+    fs.mkdirSync(process.cwd() + "/routes");
+    fs.writeFileSync(
+      process.cwd() + "/routes/index.ts",
+      `
+    import xavier from "xavierdb/client";
+    export default function GET (req: typeof RequestData) {
+      return new Response(JSON.stringify({message: "Hello World"}), {
+        status: responseCodes.ok,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
+      }); 
+  }`.trim()
+    );
+    fs.writeFileSync(process.cwd() + "/.env", env_example);
+  }
+
+  console.log(`
+  ${ansiColors.green("✨ Project initialized successfully ✨")}
+  To start the server run the following command:
+  ${ansiColors.blue("xavier --serve")}
+  `);
+  process.exit(0);
+}
+
 if (fs.existsSync(process.cwd() + "/schema.cbf")) {
   !fs.existsSync(process.cwd() + "/node_modules/xavierdb") &&
     fs.mkdirSync(process.cwd() + "/node_modules/xavierdb");
@@ -339,111 +399,15 @@ auth: ${collection.auth || false}
 }`
   );
 }
+
 let xavier = await import(
   process.cwd() + "/node_modules/xavierdb/client/index.ts"
 ).then((mod) => mod.default);
 xavier.sync();
 
-Object.keys(xavier).map((key) => {
-  if(key === "sync" || key === "jwt") return;
-  let collection = xavier[key];
-  collection.on("change", () => {
-    globalThis.pingCacheNodes();
-  });
-});
+ 
 
-let args = process.argv.slice(2);
-if (!fs.existsSync(process.cwd() + "/data")) {
-  fs.mkdirSync(process.cwd() + "/data");
-}
-if (!fs.existsSync(process.cwd() + "/data/db.sqlite")) {
-  fs.writeFileSync(process.cwd() + "/data/db.sqlite", "");
-}
-if (!fs.existsSync(process.cwd() + "/node_modules")) {
-  fs.mkdirSync(process.cwd() + "/node_modules");
-}
-if (!fs.existsSync(process.cwd() + "/logs")) {
-  fs.mkdirSync(process.cwd() + "/logs");
-}
-if (args[0] && args[0].startsWith("--help")) {
-  switch (true) {
-    case args.includes("--help-env"):
-      console.log(
-        `
-Environment Variables
-------
-${env_example}
-   `.trim()
-      );
-  }
-  console.log(
-    `\n
---help - Show help
---help-env - Show environment variables
---version - Show version
---init - Initialize the project
---serve - Start the server
-  `.trim()
-  );
-  process.exit(0);
-}
-if (args.includes("--version")) {
-  console.log(
-    `
-Xavier v1.0.0
-Codename: Xenofon
-`.trim()
-  );
-  process.exit(0);
-}
-
-if (args.includes("--init")) {
-  if (fs.existsSync(process.cwd() + "/routes")) {
-    console.error("Project already initialized");
-    process.exit(1);
-  }
-  if (!fs.existsSync(process.cwd() + "/uploads")) {
-    fs.mkdirSync(process.cwd() + "/uploads");
-  }
-  if (!fs.existsSync(process.cwd() + "/config.ts")) {
-    fs.writeFileSync(
-      process.cwd() + "/schema.cbf",
-      `
-    collection users {
-      name: text & required,
-      email: text  & required,
-    }
-    end;
-    `.trim()
-    );
-  }
-  if (!fs.existsSync(process.cwd() + "/routes")) {
-    fs.mkdirSync(process.cwd() + "/routes");
-    fs.writeFileSync(
-      process.cwd() + "/routes/index.ts",
-      `
-    import xavier from "xavierdb/client";
-    export default function GET (req: typeof RequestData) {
-      return new Response(JSON.stringify({message: "Hello World"}), {
-        status: responseCodes.ok,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*"
-        }
-      }); 
-  }`.trim()
-    );
-    fs.writeFileSync(process.cwd() + "/.env", env_example);
-  }
-
-  console.log(`
-  ${ansiColors.green("✨ Project initialized successfully ✨")}
-  To start the server run the following command:
-  ${ansiColors.blue("xavier --serve")}
-  `);
-  process.exit(0);
-}
-
+ 
 function generateTypes(config: any) {
   // generate types from config
   config.collections.map((collection) => {
@@ -636,56 +600,7 @@ if (args.includes("--serve")) {
         });
       }
 
-      if (url.pathname.startsWith("/replicate")) {
-        let secret = req.headers.get("Authorization").split("Bearer ")[1];
-        // we need to save the server api url so we can ping when we need to resync
-        let server = req.headers.get("NODE_ENDPOINT");
-        if (!CacheNodes.find((node) => node === server)) {
-          CacheNodes.push(server);
-        }
-        if (!secret) {
-          return new Response("401 Unauthorized", {
-            status: responseCodes.unauthorized,
-          });
-        }
-        if (secret !== process.env.REPLICATION_SECRET) {
-          return new Response("401 Unauthorized", {
-            status: responseCodes.unauthorized,
-          });
-        }
-        if (!server) {
-          return new Response("400 Bad Request", {
-            status: responseCodes.badrequest,
-          });
-        }
-        let lastSyncTime = new Date(req.headers.get("Last-Sync-Time")); // Get the last synchronization time from the request headers as a Date object
-
-        let data = [];
-
-        for (var i in xavier) {
-          if (i === "sync" || i === "jwt") continue;
-          let collection = xavier[i];
-          let docs = await collection.getAll();
-
-          // Filter documents based on last sync time
-          let updatedDocs = docs.filter((doc) => {
-            return doc.created_at > lastSyncTime; // Assuming doc.created_at is the Date field indicating when the document was created
-          });
-
-          data.push({ name: i, docs: updatedDocs });
-        }
-
-        return new Response(JSON.stringify(data, null, 2), {
-          status: responseCodes.ok,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers":
-              "Authorization-Session, content-type, Authorization",
-            "Last-Sync-Time": new Date().toISOString(), // Update the Last-Sync-Time header with the current time
-          },
-        });
-      }
+       
 
       // if bucket doesnt include token, add it
       if (
